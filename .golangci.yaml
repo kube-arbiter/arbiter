@@ -1,0 +1,97 @@
+run:
+  timeout: 30m
+  skip-dirs:
+    - "/pkg/generated"
+  modules-download-mode: "vendor"
+
+linters:
+  disable-all: true
+  enable:
+    # linters maintained by golang.org
+    - gofmt
+    - goimports
+    - govet
+    # linters enabled by default
+    - errcheck
+    - ineffassign
+    - gosimple
+    - govet
+    - staticcheck
+    - typecheck
+    - unused
+    # custom
+    # please keep this alphabetized
+    - asasalint
+    - bidichk
+    - bodyclose
+    - containedctx
+    # - contextcheck # TODO(Abirdcfly): make it run
+    - dupl
+    - durationcheck
+    - dupword
+    - errchkjson
+    - errname
+    - gci
+    - goconst
+  # - godox  # useful but will make golangci-lint return exit code 1 and check failed
+    - goheader
+    - grouper
+    - misspell
+    - nilerr
+    - nolintlint
+    - prealloc
+    - promlinter
+    - revive
+    - stylecheck
+    - tagliatelle
+    - tenv
+    - tparallel
+    - unconvert
+    - usestdlibvars
+    # - wastedassign # need generics support https://github.com/golangci/golangci-lint/issues/2649
+    - whitespace
+
+issues:
+  max-same-issues: 0
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - errcheck
+        - dupl
+        - deadcode
+        - unused
+    - path: pkg/apis/schedulerconfig/v1beta1/defaults.go
+      linters:
+        - stylecheck
+      text: ST1003  # defaults should use underscores
+  fix: true
+
+linters-settings: # please keep this alphabetized
+  errcheck:
+    check-type-assertions: true
+    disable-default-exclusions: true
+    exclude-functions:
+      - io/ioutil.ReadFile
+      - io.Copy(*bytes.Buffer)
+      - io.Copy(os.Stdout)
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/kube-arbiter/arbiter)
+      - blank
+      - dot
+    skip-generated: true
+    custom-order: true
+  revive:
+    ignore-generated-header: true
+    severity: error
+    #enable-all-rules: true  # TODO(Abirdcfly): should chose some rules
+  staticcheck:
+    checks: [
+      "all",
+    ]
+
+severity:
+  default-severity: error
