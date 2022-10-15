@@ -151,7 +151,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 				if l == 0 {
 					return float64(0), nil
 				}
-				logger.V(4).Infoln("sum=", sum)
+				logger.V(4).Info("sum=", sum)
 				return sum / (float64(l)), nil
 
 			},
