@@ -126,7 +126,7 @@ func (f *fetcher) Fetch(ctx context.Context, req *obi.GetMetricsRequest) (*v1alp
 	go func(ans *v1alpha1.ObservabilityIndicantStatusMetricInfo) {
 		metricResp, err := f.rpcCli.GetMetrics(ctx, req)
 		if err != nil {
-			klog.Errorf("\t %s try to get metric by resource(%v) or by query(%s) error: %s\n", method, req.ResourceNames, req.Query)
+			klog.Errorf("\t %s try to get metric by resource(%v) or by query(%s) error: %s\n", method, req.ResourceNames, req.Query, err)
 			fetchResult <- err
 			return
 		}

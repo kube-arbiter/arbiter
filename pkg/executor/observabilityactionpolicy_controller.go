@@ -129,8 +129,14 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 				if len(s) == 0 {
 					return float64(0), nil
 				}
+
+				l := len(s)
 				var sum float64 = 0
 				for _, sval := range s {
+					if sval == "" {
+						l--
+						continue
+					}
 					val, err := strconv.ParseFloat(sval, 64)
 					if err != nil {
 						klog.Errorf("evaluate error: %s", err)
@@ -138,8 +144,11 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 					}
 					sum += val
 				}
+				if l == 0 {
+					return float64(0), nil
+				}
 				klog.V(4).Infoln("sum=", sum)
-				return sum / float64(len(s)), nil
+				return sum / (float64(l)), nil
 			},
 		}
 
