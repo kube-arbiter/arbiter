@@ -1925,6 +1925,7 @@ k8s.io/gengo/types
 # k8s.io/klog/v2 v2.30.0
 ## explicit; go 1.13
 k8s.io/klog/v2
+k8s.io/klog/v2/klogr
 # k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
 ## explicit; go 1.16
 k8s.io/kube-openapi/cmd/openapi-gen/args

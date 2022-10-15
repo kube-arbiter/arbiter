@@ -75,14 +75,15 @@ func fileExist(path string) bool {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
 func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 	instance := &arbiterv1alpha1.ObservabilityActionPolicy{}
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
 	if err != nil {
-		klog.Errorf("r.Client.Get ObservabilityActionPolicy error: %s\n", err)
 		if errors.IsNotFound(err) {
-			klog.Errorln("ObservabilityActionPolicy IsNotFound")
+			logger.Info("ObservabilityActionPolicy IsNotFound")
 			return ctrl.Result{}, nil
+		} else {
+			logger.Error(err, "r.Client.Get ObservabilityActionPolicy")
 		}
 		return ctrl.Result{}, err
 	}
@@ -93,10 +94,12 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 		Name:      instance.Spec.ObIndicantName,
 	}, obi)
 	if err != nil {
-		klog.Errorf("r.Client.Get ObservabilityIndicant error: %s\n", err)
+
 		if errors.IsNotFound(err) {
-			klog.Infof("ObservabilityIndicant %s IsNotFound", instance.Spec.ObIndicantName)
+			logger.Info("ObservabilityIndicant IsNotFound", "ObIndicantName", instance.Spec.ObIndicantName)
 			return ctrl.Result{}, nil
+		} else {
+			logger.Error(err, "r.Client.Get ObservabilityIndicant")
 		}
 		return ctrl.Result{}, err
 	}
@@ -110,11 +113,12 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 			return reconcile.Result{Requeue: true}, err
 		}
 
-		klog.V(4).Infoln(instance.Spec.ObIndicantName)
+		logger.V(4).Info("ObIndicantName", "ObIndicantName", instance.Spec.ObIndicantName)
 		if obi.Annotations["observability-action-policy"] != instance.Name {
 			obi.Annotations["observability-action-policy"] = instance.Name
 			if err := r.Client.Update(context.Background(), obi); err != nil {
-				klog.Errorf("update ObservabilityIndicant %s erorr: %s\n", instance.Spec.ObIndicantName, err)
+				logger.Error(err, "update ObservabilityIndicant",
+					"ObIndicantName", instance.Spec.ObIndicantName)
 			}
 		}
 
@@ -123,7 +127,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 			"avg": func(args ...interface{}) (interface{}, error) {
 				s, ok := args[0].([]string)
 				if !ok {
-					klog.Errorf("avg args[0] type error: %T", args[0])
+					logger.Info("avg args[0] type error", "args[0]", args[0])
 					return float64(0), nil
 				}
 				if len(s) == 0 {
@@ -139,7 +143,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 					}
 					val, err := strconv.ParseFloat(sval, 64)
 					if err != nil {
-						klog.Errorf("evaluate error: %s", err)
+						logger.Error(err, "evaluate error")
 						return ctrl.Result{}, err
 					}
 					sum += val
@@ -147,8 +151,9 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 				if l == 0 {
 					return float64(0), nil
 				}
-				klog.V(4).Infoln("sum=", sum)
+				logger.V(4).Info("sum=", sum)
 				return sum / (float64(l)), nil
+
 			},
 		}
 
@@ -172,25 +177,25 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 		}
 		expr, err := govaluate.NewEvaluableExpressionWithFunctions(instance.Spec.Condition.Expression, functions)
 		if err != nil {
-			klog.Errorf("govaluate.NewEvaluableExpressionWithFunctions error: %s\n", err)
+			logger.Error(err, "govaluate.NewEvaluableExpressionWithFunctions")
 			return ctrl.Result{}, err
 		}
 
 		expressionValue, err := expr.Evaluate(parameters)
 		if err != nil {
-			klog.Errorf("expr.Evaluate(parameters) error: %s\n", err)
+			logger.Error(err, "expr.Evaluate(parameters)")
 			return ctrl.Result{}, err
 		}
 
 		expr, err = govaluate.NewEvaluableExpressionWithFunctions(instance.Spec.Condition.Expression+" "+instance.Spec.Condition.Operator+" "+instance.Spec.Condition.TargetValue, functions)
 		if err != nil {
-			klog.Errorf("govaluate.NewEvaluableExpressionWithFunctions error: %s\n", err)
+			logger.Error(err, "govaluate.NewEvaluableExpressionWithFunctions")
 			return ctrl.Result{}, err
 		}
 
 		conditionValue, err := expr.Evaluate(parameters)
 		if err != nil {
-			klog.Errorf("expr.Evaluate(parameters) error: %s\n", err)
+			logger.Error(err, "expr.Evaluate(parameters)")
 			return ctrl.Result{}, err
 		}
 
@@ -207,7 +212,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 
 		actionInfo = append(actionInfo, pai)
 
-		klog.V(4).Infof("%s=%v", instance.Spec.Condition.Expression, expressionValue)
+		logger.V(4).Info("instance.Spec.Condition.Expression", "Expression", expressionValue)
 
 		needUpdate := false
 		if len(actionInfo) != len(instance.Status.ActionInfo) {
@@ -238,14 +243,15 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 				break
 			}
 
-			klog.Errorf("sockFile: %s, not exist yet, retry %d time(s)\n", sockFile, count)
+			logger.Error(err, "sock file not exist yet, retry",
+				"sockFile", sockFile, "retry", count)
 			time.Sleep(5 * time.Second)
 			count++
 		}
 
 		conn, err := ExecuteConn(sockFile)
 		if err != nil {
-			klog.Errorf("try to connect server error: %s\n", err)
+			logger.Error(err, "try to connect server")
 			return reconcile.Result{}, err
 		}
 		defer conn.Close()
@@ -262,13 +268,13 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 
 				exprVal, err := strconv.ParseFloat(actionInfo[i].ExpressionValue, 64)
 				if err != nil {
-					klog.Infoln("strconv.ParseFloat err", err)
+					logger.Error(err, "strconv.ParseFloat")
 					exprVal = 0
 				}
 
 				condVal, err := strconv.ParseBool(actionInfo[i].ConditionValue)
 				if err != nil {
-					klog.Infoln("strconv.ParseBool err", err)
+					logger.Error(err, "strconv.ParseBool")
 					exprVal = 0
 				}
 
@@ -289,16 +295,17 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 
 				res, err := client.Execute(ctx, &message)
 				if err != nil {
-					klog.Errorf("client.Execute: %s\n", err)
+					logger.Error(err, "client.Execute")
 				}
-				klog.V(4).Infof("Got result from executor plugin: %s", res)
+				logger.V(4).Info("Got result from executor plugin", "res", res)
 			}()
 		}
 
 		return ctrl.Result{}, nil
 	}
 
-	klog.Infof("Delete Policy %s. Which will remove finalzer and delete labels\n", instance.GetName())
+	logger.Info("Delete Policy. Which will remove finalzer and delete labels",
+		"policy", instance.GetName())
 	instance.Finalizers = utils.RemoveFinalizer(instance.Finalizers, finalizer)
 	resourceName, err := r.FindResourceNameByIndex(obi)
 	if resourceName == "" {
@@ -321,14 +328,14 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 
 	conn, err := ExecuteConn(sockFile)
 	if err != nil {
-		klog.Errorf("try to connect server error: %s\n", err)
+		logger.Error(err, "try to connect server")
 		return reconcile.Result{}, err
 	}
 	defer conn.Close()
 	client := pb.NewExecuteClient(conn)
 	_, err = client.Execute(context.TODO(), &message)
 	if err != nil {
-		klog.Errorf("client.Execute error: %s\n", err)
+		logger.Error(err, "client.Execute")
 		return reconcile.Result{}, err
 	}
 
