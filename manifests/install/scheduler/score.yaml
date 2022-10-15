@@ -1,0 +1,37 @@
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: Score
+metadata:
+  name: show-demo
+  namespace: kube-system
+spec:
+  logic: |
+    function score() {
+        // Feel free to modify this `score` function to suit your needs.
+        // This score function replaces the default score function in the scheduling framework.
+        // It inputs the pod and node to be scheduled, and outputs a number (usually 0 to 100).
+        // The higher the number, the more the pod tends to be scheduled to this node.
+        // The current example shows the scoring based on the actual resource usage of the node.
+        if (node.raw == undefined || node.raw.status == undefined || node.raw.status.capacity == undefined || node.raw.metadata == undefined || node.raw.metadata.name == undefined) {
+            // console.error and console.log will print log to the arbiter-scheduler's log.
+            console.error('[arbiter-js] cant find node manifest.');
+            return 0;
+        }
+        var name = node.raw.metadata.name;
+        var capacity = node.raw.status.capacity;
+        if (capacity.cpu == undefined) {
+            console.error('[arbiter-js] cant find node cpu capacity in capacity', name);
+            return 0;
+        }
+        var cpuTotal = capacity.cpu * 1000;
+        var cpuAvg = cpuTotal * 0.5; // same with obi, default value from capacity
+        console.log('[arbiter-js] cpuAvg', cpuAvg);
+        if (node.metric == undefined || node.metric.cpu == undefined || node.metric.cpu.avg == undefined) {
+            console.error('[arbiter-js] cant find node cpu metric', name);
+        } else {
+            cpuAvg = node.metric.cpu.avg;  // if has metric, use metric instead
+            console.log('[arbiter-js] cpuAvg', cpuAvg);
+        }
+        var cpuScore = (cpuTotal - cpuAvg) / cpuTotal;
+        console.log('[arbiter-js] cpuScore:', cpuScore, 'nodeName', name, 'cpuTotal', cpuTotal, 'cpuAvg', cpuAvg);
+        return cpuScore * 100;
+    }

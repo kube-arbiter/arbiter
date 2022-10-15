@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observer-metric-server
+spec:
+  selector:
+    matchLabels:
+      app: observer-metric-server
+  template:
+    metadata:
+      labels:
+        app: observer-metric-server
+    spec:
+      containers:
+        - command:
+            - observer-metric-server
+          image: kubearbiter/observer-metric-server:v0.1.0
+          name: metric-server-plugin
+          resources:
+            limits:
+              cpu: 1
+              memory: 128Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - mountPath: /var/run
+              name: sock-volume
+        - command:
+            - observer
+          image: kubearbiter/observer:v0.1.0
+          name: obi-controller
+          resources:
+            limits:
+              cpu: 1
+              memory: 128Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - mountPath: /var/run
+              name: sock-volume
+      serviceAccount: observability
+      serviceAccountName: observability
+      volumes:
+        - emptyDir: {}
+          name: sock-volume

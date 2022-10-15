@@ -1,0 +1,89 @@
+syntax = "proto3";
+package obi.v1;
+
+option go_package = "lib/observer";
+
+service Server {
+    rpc GetPluginName (GetPluginNameRequest)
+        returns (GetPluginNameResponse) {}
+    
+    rpc PluginCapabilities (PluginCapabilitiesRequest)
+        returns (PluginCapabilitiesResponse) {}
+
+    rpc GetMetrics (GetMetricsRequest)
+        returns (GetMetricsResponse) {}
+}
+
+
+message GetPluginNameRequest {
+    // nothing
+}
+
+message GetPluginNameResponse {
+    string name = 1;
+    map<string, string> attr = 2;
+}
+
+message PluginCapabilitiesRequest {
+    // nothing
+}
+
+message MetricInfo {
+    // cpu_usage
+    string metric_unit = 1;
+    string  description = 2;
+    repeated string aggregation = 3; 
+}
+
+message PluginCapabilitiesResponse {
+    // {"cpu_usage": {"metric_unit":"c","aggregation": ["a","b"]}}
+    map<string, MetricInfo> metric_info = 2;
+}
+
+message GetMetricsRequest {
+    // pod name or node name.
+    // if there is a query field, ignore the resource_name field
+    repeated string resource_names = 1;
+
+    string namespace = 2;
+
+    // cpu_usage, memory_usage eg.
+    string metric_name = 3;
+
+    // max, min, avg. And so on, some ways to aggregate data
+    repeated string aggregation = 4;
+
+    // such as promql
+    string query = 5;
+
+    // 1650867976563 million second
+    // 这个请求时间做一个保留
+    int64 start_time = 6;
+    int64 end_time = 7;
+
+    // resource kind, Pod, Node etc.
+    string kind = 8;
+
+    string unit = 9;
+}
+
+message GetMetricsResponse {
+    // maybe empty,
+    // For example, metrics-server can return resource_name,
+    // which is the acquisition of the instantaneous value of the data.
+    string resource_name = 1;
+
+    string namespace = 2;
+
+    // maybe empty
+    string unit = 3;
+
+    // the value field is string that is serialized by json.
+    // {"cpu_usage": 0.1}
+    message record {
+        int64 timestamp = 1;
+        string value = 2;
+    }
+    repeated record records = 4;
+    //map<string,double> values = 4;
+}

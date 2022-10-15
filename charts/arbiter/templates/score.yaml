@@ -1,0 +1,16 @@
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: Score
+metadata:
+  name: {{ .Values.scheduler.nameOverride }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  logic: |
+    function score() {
+      if (pod.metric.cpu.avg >= 0.3 && "high-performance-cpu" in node.labels) {
+          return 100;
+      } else if (pod.metric.cpu.avg <= 0.1 && "energy-saving-cpu" in node.labels) {
+          return 100;
+      } else {
+          return 0;
+      }
+    }

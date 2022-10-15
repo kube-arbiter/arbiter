@@ -1,0 +1,19 @@
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: ObservabilityActionPolicy
+metadata:
+  name: prometheus-pod-mem
+spec:
+  condition:
+    expression: avg([metrics.memory])/1000000
+    operator: '>='
+    targetValue: "0"
+  obIndicantname: prometheus-pod-mem
+  parameters:
+    tagging-key: prometheus-pod-mem
+    tagging-value: sensitive
+status:
+  actionInfo: []
+  timeInfo:
+    startTime: "2022-09-26T10:46:25Z"
+    endTime: "2022-09-26T10:46:25Z"
+    metricIntervalSeconds: 15
