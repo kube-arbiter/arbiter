@@ -81,7 +81,7 @@ func (ps *Plugins) Register(name string, plugin Factory) {
 		ps.registry = map[string]Factory{}
 	}
 
-	klog.V(1).InfoS("Registered admission plugin", "plugin", name)
+	klog.V(1).Infof("Registered admission plugin %q", name)
 	ps.registry[name] = plugin
 }
 

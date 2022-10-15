@@ -36,28 +36,6 @@ func PodRequestsAndLimits(pod *v1.Pod) (reqs, limits v1.ResourceList) {
 	return PodRequestsAndLimitsReuse(pod, nil, nil)
 }
 
-// PodRequestsAndLimitsWithoutOverhead will create a dictionary of all defined resources summed up for all
-// containers of the pod.
-func PodRequestsAndLimitsWithoutOverhead(pod *v1.Pod) (reqs, limits v1.ResourceList) {
-	reqs = make(v1.ResourceList, 4)
-	limits = make(v1.ResourceList, 4)
-	podRequestsAndLimitsWithoutOverhead(pod, reqs, limits)
-
-	return reqs, limits
-}
-
-func podRequestsAndLimitsWithoutOverhead(pod *v1.Pod, reqs, limits v1.ResourceList) {
-	for _, container := range pod.Spec.Containers {
-		addResourceList(reqs, container.Resources.Requests)
-		addResourceList(limits, container.Resources.Limits)
-	}
-	// init containers define the minimum of any resource
-	for _, container := range pod.Spec.InitContainers {
-		maxResourceList(reqs, container.Resources.Requests)
-		maxResourceList(limits, container.Resources.Limits)
-	}
-}
-
 // PodRequestsAndLimitsReuse returns a dictionary of all defined resources summed up for all
 // containers of the pod. If PodOverhead feature is enabled, pod overhead is added to the
 // total container resource requests and to the total container limits which have a
@@ -67,7 +45,15 @@ func PodRequestsAndLimitsReuse(pod *v1.Pod, reuseReqs, reuseLimits v1.ResourceLi
 	// attempt to reuse the maps if passed, or allocate otherwise
 	reqs, limits = reuseOrClearResourceList(reuseReqs), reuseOrClearResourceList(reuseLimits)
 
-	podRequestsAndLimitsWithoutOverhead(pod, reqs, limits)
+	for _, container := range pod.Spec.Containers {
+		addResourceList(reqs, container.Resources.Requests)
+		addResourceList(limits, container.Resources.Limits)
+	}
+	// init containers define the minimum of any resource
+	for _, container := range pod.Spec.InitContainers {
+		maxResourceList(reqs, container.Resources.Requests)
+		maxResourceList(limits, container.Resources.Limits)
+	}
 
 	// if PodOverhead feature is supported, add overhead for running a pod
 	// to the sum of requests and to non-zero limits:

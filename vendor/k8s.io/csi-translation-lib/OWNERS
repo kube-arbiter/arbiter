@@ -12,6 +12,3 @@ approvers:
   - davidz627
   - saad-ali
   - msau42
-
-labels:
-  - sig/storage

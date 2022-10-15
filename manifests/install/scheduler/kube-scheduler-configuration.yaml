@@ -1,0 +1,17 @@
+apiVersion: kubescheduler.config.k8s.io/v1beta1
+kind: KubeSchedulerConfiguration
+leaderElection:
+  leaderElect: false
+clientConnection:
+  kubeconfig: /etc/kubernetes/scheduler.conf
+profiles:
+  - schedulerName: default-scheduler
+    plugins:
+      score:
+        enabled:
+          - name: Arbiter
+            weight: 100
+    pluginConfig:
+    - name: Arbiter
+      args:
+        kubeConfigPath: /etc/kubernetes/scheduler.conf

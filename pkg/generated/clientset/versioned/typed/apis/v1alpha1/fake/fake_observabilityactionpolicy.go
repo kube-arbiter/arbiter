@@ -105,7 +105,7 @@ func (c *FakeObservabilityActionPolicies) Update(ctx context.Context, observabil
 // Delete takes name of the observabilityActionPolicy and deletes it. Returns an error if one occurs.
 func (c *FakeObservabilityActionPolicies) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(observabilityactionpoliciesResource, c.ns, name, opts), &v1alpha1.ObservabilityActionPolicy{})
+		Invokes(testing.NewDeleteAction(observabilityactionpoliciesResource, c.ns, name), &v1alpha1.ObservabilityActionPolicy{})
 
 	return err
 }

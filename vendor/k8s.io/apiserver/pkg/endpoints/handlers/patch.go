@@ -23,8 +23,6 @@ import (
 	"strings"
 	"time"
 
-	kjson "sigs.k8s.io/json"
-
 	jsonpatch "github.com/evanphx/json-patch"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -35,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/apimachinery/pkg/util/mergepatch"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
@@ -44,7 +43,6 @@ import (
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
-	"k8s.io/apiserver/pkg/endpoints/handlers/finisher"
 	"k8s.io/apiserver/pkg/endpoints/handlers/negotiation"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
@@ -63,7 +61,7 @@ const (
 func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interface, patchTypes []string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		// For performance tracking purposes.
-		trace := utiltrace.New("Patch", traceFields(req)...)
+		trace := utiltrace.New("Patch", utiltrace.Field{Key: "url", Value: req.URL.Path}, utiltrace.Field{Key: "user-agent", Value: &lazyTruncatedUserAgent{req}}, utiltrace.Field{Key: "client", Value: &lazyClientIP{req}})
 		defer trace.LogIfLong(500 * time.Millisecond)
 
 		if isDryRun(req.URL) && !utilfeature.DefaultFeatureGate.Enabled(features.DryRun) {
@@ -86,17 +84,19 @@ func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interfac
 			return
 		}
 
+		// TODO: we either want to remove timeout or document it (if we
+		// document, move timeout out of this function and declare it in
+		// api_installer)
+		timeout := parseTimeout(req.URL.Query().Get("timeout"))
+
 		namespace, name, err := scope.Namer.Name(req)
 		if err != nil {
 			scope.err(err, w, req)
 			return
 		}
 
-		// enforce a timeout of at most requestTimeoutUpperBound (34s) or less if the user-provided
-		// timeout inside the parent context is lower than requestTimeoutUpperBound.
-		ctx, cancel := context.WithTimeout(req.Context(), requestTimeoutUpperBound)
+		ctx, cancel := context.WithTimeout(req.Context(), timeout)
 		defer cancel()
-
 		ctx = request.WithNamespace(ctx, namespace)
 
 		outputMediaType, _, err := negotiation.NegotiateOutputMediaType(req, scope.Serializer, scope)
@@ -124,10 +124,10 @@ func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interfac
 		}
 		options.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("PatchOptions"))
 
-		ae := audit.AuditEventFrom(ctx)
+		ae := request.AuditEventFrom(ctx)
 		admit = admission.WithAudit(admit, ae)
 
-		audit.LogRequestPatch(req.Context(), patchBytes)
+		audit.LogRequestPatch(ae, patchBytes)
 		trace.Step("Recorded the audit event")
 
 		baseContentType := runtime.ContentTypeJSON
@@ -141,15 +141,9 @@ func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interfac
 		}
 		gv := scope.Kind.GroupVersion()
 
-		validationDirective := fieldValidation(options.FieldValidation)
-		decodeSerializer := s.Serializer
-		if validationDirective == metav1.FieldValidationWarn || validationDirective == metav1.FieldValidationStrict {
-			decodeSerializer = s.StrictSerializer
-		}
-
 		codec := runtime.NewCodec(
 			scope.Serializer.EncoderForVersion(s.Serializer, gv),
-			scope.Serializer.DecoderToVersion(decodeSerializer, scope.HubGroupVersion),
+			scope.Serializer.DecoderToVersion(s.Serializer, scope.HubGroupVersion),
 		)
 
 		userInfo, _ := request.UserFrom(ctx)
@@ -179,9 +173,6 @@ func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interfac
 			userInfo,
 		)
 
-		if scope.FieldManager != nil {
-			admit = fieldmanager.NewManagedFieldsValidatingAdmissionController(admit)
-		}
 		mutatingAdmission, _ := admit.(admission.MutationInterface)
 		createAuthorizerAttributes := authorizer.AttributesRecord{
 			User:            userInfo,
@@ -197,16 +188,15 @@ func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interfac
 		}
 
 		p := patcher{
-			namer:               scope.Namer,
-			creater:             scope.Creater,
-			defaulter:           scope.Defaulter,
-			typer:               scope.Typer,
-			unsafeConvertor:     scope.UnsafeConvertor,
-			kind:                scope.Kind,
-			resource:            scope.Resource,
-			subresource:         scope.Subresource,
-			dryRun:              dryrun.IsDryRun(options.DryRun),
-			validationDirective: validationDirective,
+			namer:           scope.Namer,
+			creater:         scope.Creater,
+			defaulter:       scope.Defaulter,
+			typer:           scope.Typer,
+			unsafeConvertor: scope.UnsafeConvertor,
+			kind:            scope.Kind,
+			resource:        scope.Resource,
+			subresource:     scope.Subresource,
+			dryRun:          dryrun.IsDryRun(options.DryRun),
 
 			objectInterfaces: scope,
 
@@ -218,6 +208,7 @@ func PatchResource(r rest.Patcher, scope *RequestScope, admit admission.Interfac
 
 			codec: codec,
 
+			timeout: timeout,
 			options: options,
 
 			restPatcher: r,
@@ -259,16 +250,15 @@ type mutateObjectUpdateFunc func(ctx context.Context, obj, old runtime.Object) e
 // moved into this type.
 type patcher struct {
 	// Pieces of RequestScope
-	namer               ScopeNamer
-	creater             runtime.ObjectCreater
-	defaulter           runtime.ObjectDefaulter
-	typer               runtime.ObjectTyper
-	unsafeConvertor     runtime.ObjectConvertor
-	resource            schema.GroupVersionResource
-	kind                schema.GroupVersionKind
-	subresource         string
-	dryRun              bool
-	validationDirective string
+	namer           ScopeNamer
+	creater         runtime.ObjectCreater
+	defaulter       runtime.ObjectDefaulter
+	typer           runtime.ObjectTyper
+	unsafeConvertor runtime.ObjectConvertor
+	resource        schema.GroupVersionResource
+	kind            schema.GroupVersionKind
+	subresource     string
+	dryRun          bool
 
 	objectInterfaces admission.ObjectInterfaces
 
@@ -281,6 +271,7 @@ type patcher struct {
 
 	codec runtime.Codec
 
+	timeout time.Duration
 	options *metav1.PatchOptions
 
 	// Operation information
@@ -300,8 +291,8 @@ type patcher struct {
 }
 
 type patchMechanism interface {
-	applyPatchToCurrentObject(requextContext context.Context, currentObject runtime.Object) (runtime.Object, error)
-	createNewObject(requestContext context.Context) (runtime.Object, error)
+	applyPatchToCurrentObject(currentObject runtime.Object) (runtime.Object, error)
+	createNewObject() (runtime.Object, error)
 }
 
 type jsonPatcher struct {
@@ -310,7 +301,7 @@ type jsonPatcher struct {
 	fieldManager *fieldmanager.FieldManager
 }
 
-func (p *jsonPatcher) applyPatchToCurrentObject(requestContext context.Context, currentObject runtime.Object) (runtime.Object, error) {
+func (p *jsonPatcher) applyPatchToCurrentObject(currentObject runtime.Object) (runtime.Object, error) {
 	// Encode will convert & return a versioned object in JSON.
 	currentObjJS, err := runtime.Encode(p.codec, currentObject)
 	if err != nil {
@@ -318,7 +309,7 @@ func (p *jsonPatcher) applyPatchToCurrentObject(requestContext context.Context, 
 	}
 
 	// Apply the patch.
-	patchedObjJS, appliedStrictErrs, err := p.applyJSPatch(currentObjJS)
+	patchedObjJS, err := p.applyJSPatch(currentObjJS)
 	if err != nil {
 		return nil, err
 	}
@@ -326,32 +317,9 @@ func (p *jsonPatcher) applyPatchToCurrentObject(requestContext context.Context, 
 	// Construct the resulting typed, unversioned object.
 	objToUpdate := p.restPatcher.New()
 	if err := runtime.DecodeInto(p.codec, patchedObjJS, objToUpdate); err != nil {
-		strictError, isStrictError := runtime.AsStrictDecodingError(err)
-		switch {
-		case !isStrictError:
-			// disregard any appliedStrictErrs, because it's an incomplete
-			// list of strict errors given that we don't know what fields were
-			// unknown because DecodeInto failed. Non-strict errors trump in this case.
-			return nil, errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
-				field.Invalid(field.NewPath("patch"), string(patchedObjJS), err.Error()),
-			})
-		case p.validationDirective == metav1.FieldValidationWarn:
-			addStrictDecodingWarnings(requestContext, append(appliedStrictErrs, strictError.Errors()...))
-		default:
-			strictDecodingError := runtime.NewStrictDecodingError(append(appliedStrictErrs, strictError.Errors()...))
-			return nil, errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
-				field.Invalid(field.NewPath("patch"), string(patchedObjJS), strictDecodingError.Error()),
-			})
-		}
-	} else if len(appliedStrictErrs) > 0 {
-		switch {
-		case p.validationDirective == metav1.FieldValidationWarn:
-			addStrictDecodingWarnings(requestContext, appliedStrictErrs)
-		default:
-			return nil, errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
-				field.Invalid(field.NewPath("patch"), string(patchedObjJS), runtime.NewStrictDecodingError(appliedStrictErrs).Error()),
-			})
-		}
+		return nil, errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
+			field.Invalid(field.NewPath("patch"), string(patchedObjJS), err.Error()),
+		})
 	}
 
 	if p.fieldManager != nil {
@@ -360,65 +328,52 @@ func (p *jsonPatcher) applyPatchToCurrentObject(requestContext context.Context, 
 	return objToUpdate, nil
 }
 
-func (p *jsonPatcher) createNewObject(_ context.Context) (runtime.Object, error) {
+func (p *jsonPatcher) createNewObject() (runtime.Object, error) {
 	return nil, errors.NewNotFound(p.resource.GroupResource(), p.name)
-}
-
-type jsonPatchOp struct {
-	Op    string      `json:"op"`
-	Path  string      `json:"path"`
-	From  string      `json:"from"`
-	Value interface{} `json:"value"`
 }
 
 // applyJSPatch applies the patch. Input and output objects must both have
 // the external version, since that is what the patch must have been constructed against.
-func (p *jsonPatcher) applyJSPatch(versionedJS []byte) (patchedJS []byte, strictErrors []error, retErr error) {
+func (p *jsonPatcher) applyJSPatch(versionedJS []byte) (patchedJS []byte, retErr error) {
 	switch p.patchType {
 	case types.JSONPatchType:
-		if p.validationDirective == metav1.FieldValidationStrict || p.validationDirective == metav1.FieldValidationWarn {
-			var v []jsonPatchOp
-			var err error
-			if strictErrors, err = kjson.UnmarshalStrict(p.patchBytes, &v); err != nil {
-				return nil, nil, errors.NewBadRequest(fmt.Sprintf("error decoding patch: %v", err))
-			}
-			for i, e := range strictErrors {
-				strictErrors[i] = fmt.Errorf("json patch %v", e)
+		// sanity check potentially abusive patches
+		// TODO(liggitt): drop this once golang json parser limits stack depth (https://github.com/golang/go/issues/31789)
+		if len(p.patchBytes) > 1024*1024 {
+			v := []interface{}{}
+			if err := json.Unmarshal(p.patchBytes, &v); err != nil {
+				return nil, errors.NewBadRequest(fmt.Sprintf("error decoding patch: %v", err))
 			}
 		}
 
 		patchObj, err := jsonpatch.DecodePatch(p.patchBytes)
 		if err != nil {
-			return nil, nil, errors.NewBadRequest(err.Error())
+			return nil, errors.NewBadRequest(err.Error())
 		}
 		if len(patchObj) > maxJSONPatchOperations {
-			return nil, nil, errors.NewRequestEntityTooLargeError(
+			return nil, errors.NewRequestEntityTooLargeError(
 				fmt.Sprintf("The allowed maximum operations in a JSON patch is %d, got %d",
 					maxJSONPatchOperations, len(patchObj)))
 		}
 		patchedJS, err := patchObj.Apply(versionedJS)
 		if err != nil {
-			return nil, nil, errors.NewGenericServerResponse(http.StatusUnprocessableEntity, "", schema.GroupResource{}, "", err.Error(), 0, false)
+			return nil, errors.NewGenericServerResponse(http.StatusUnprocessableEntity, "", schema.GroupResource{}, "", err.Error(), 0, false)
 		}
-		return patchedJS, strictErrors, nil
+		return patchedJS, nil
 	case types.MergePatchType:
-		if p.validationDirective == metav1.FieldValidationStrict || p.validationDirective == metav1.FieldValidationWarn {
+		// sanity check potentially abusive patches
+		// TODO(liggitt): drop this once golang json parser limits stack depth (https://github.com/golang/go/issues/31789)
+		if len(p.patchBytes) > 1024*1024 {
 			v := map[string]interface{}{}
-			var err error
-			strictErrors, err = kjson.UnmarshalStrict(p.patchBytes, &v)
-			if err != nil {
-				return nil, nil, errors.NewBadRequest(fmt.Sprintf("error decoding patch: %v", err))
+			if err := json.Unmarshal(p.patchBytes, &v); err != nil {
+				return nil, errors.NewBadRequest(fmt.Sprintf("error decoding patch: %v", err))
 			}
 		}
 
-		patchedJS, retErr = jsonpatch.MergePatch(versionedJS, p.patchBytes)
-		if retErr == jsonpatch.ErrBadJSONPatch {
-			return nil, nil, errors.NewBadRequest(retErr.Error())
-		}
-		return patchedJS, strictErrors, retErr
+		return jsonpatch.MergePatch(versionedJS, p.patchBytes)
 	default:
 		// only here as a safety net - go-restful filters content-type
-		return nil, nil, fmt.Errorf("unknown Content-Type header for patch: %v", p.patchType)
+		return nil, fmt.Errorf("unknown Content-Type header for patch: %v", p.patchType)
 	}
 }
 
@@ -430,7 +385,7 @@ type smpPatcher struct {
 	fieldManager       *fieldmanager.FieldManager
 }
 
-func (p *smpPatcher) applyPatchToCurrentObject(requestContext context.Context, currentObject runtime.Object) (runtime.Object, error) {
+func (p *smpPatcher) applyPatchToCurrentObject(currentObject runtime.Object) (runtime.Object, error) {
 	// Since the patch is applied on versioned objects, we need to convert the
 	// current object to versioned representation first.
 	currentVersionedObject, err := p.unsafeConvertor.ConvertToVersion(currentObject, p.kind.GroupVersion())
@@ -441,7 +396,7 @@ func (p *smpPatcher) applyPatchToCurrentObject(requestContext context.Context, c
 	if err != nil {
 		return nil, err
 	}
-	if err := strategicPatchObject(requestContext, p.defaulter, currentVersionedObject, p.patchBytes, versionedObjToUpdate, p.schemaReferenceObj, p.validationDirective); err != nil {
+	if err := strategicPatchObject(p.defaulter, currentVersionedObject, p.patchBytes, versionedObjToUpdate, p.schemaReferenceObj); err != nil {
 		return nil, err
 	}
 	// Convert the object back to the hub version
@@ -456,21 +411,20 @@ func (p *smpPatcher) applyPatchToCurrentObject(requestContext context.Context, c
 	return newObj, nil
 }
 
-func (p *smpPatcher) createNewObject(_ context.Context) (runtime.Object, error) {
+func (p *smpPatcher) createNewObject() (runtime.Object, error) {
 	return nil, errors.NewNotFound(p.resource.GroupResource(), p.name)
 }
 
 type applyPatcher struct {
-	patch               []byte
-	options             *metav1.PatchOptions
-	creater             runtime.ObjectCreater
-	kind                schema.GroupVersionKind
-	fieldManager        *fieldmanager.FieldManager
-	userAgent           string
-	validationDirective string
+	patch        []byte
+	options      *metav1.PatchOptions
+	creater      runtime.ObjectCreater
+	kind         schema.GroupVersionKind
+	fieldManager *fieldmanager.FieldManager
+	userAgent    string
 }
 
-func (p *applyPatcher) applyPatchToCurrentObject(requestContext context.Context, obj runtime.Object) (runtime.Object, error) {
+func (p *applyPatcher) applyPatchToCurrentObject(obj runtime.Object) (runtime.Object, error) {
 	force := false
 	if p.options.Force != nil {
 		force = *p.options.Force
@@ -484,30 +438,15 @@ func (p *applyPatcher) applyPatchToCurrentObject(requestContext context.Context,
 		return nil, errors.NewBadRequest(fmt.Sprintf("error decoding YAML: %v", err))
 	}
 
-	obj, err := p.fieldManager.Apply(obj, patchObj, p.options.FieldManager, force)
-	if err != nil {
-		return obj, err
-	}
-
-	// TODO: spawn something to track deciding whether a fieldValidation=Strict
-	// fatal error should return before an error from the apply operation
-	if p.validationDirective == metav1.FieldValidationStrict || p.validationDirective == metav1.FieldValidationWarn {
-		if err := yaml.UnmarshalStrict(p.patch, &map[string]interface{}{}); err != nil {
-			if p.validationDirective == metav1.FieldValidationStrict {
-				return nil, errors.NewBadRequest(fmt.Sprintf("error strict decoding YAML: %v", err))
-			}
-			addStrictDecodingWarnings(requestContext, []error{err})
-		}
-	}
-	return obj, nil
+	return p.fieldManager.Apply(obj, patchObj, p.options.FieldManager, force)
 }
 
-func (p *applyPatcher) createNewObject(requestContext context.Context) (runtime.Object, error) {
+func (p *applyPatcher) createNewObject() (runtime.Object, error) {
 	obj, err := p.creater.New(p.kind)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new object: %v", err)
 	}
-	return p.applyPatchToCurrentObject(requestContext, obj)
+	return p.applyPatchToCurrentObject(obj)
 }
 
 // strategicPatchObject applies a strategic merge patch of <patchBytes> to
@@ -516,13 +455,11 @@ func (p *applyPatcher) createNewObject(requestContext context.Context) (runtime.
 // <originalObject> and <patchBytes>.
 // NOTE: Both <originalObject> and <objToUpdate> are supposed to be versioned.
 func strategicPatchObject(
-	requestContext context.Context,
 	defaulter runtime.ObjectDefaulter,
 	originalObject runtime.Object,
 	patchBytes []byte,
 	objToUpdate runtime.Object,
 	schemaReferenceObj runtime.Object,
-	validationDirective string,
 ) error {
 	originalObjMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(originalObject)
 	if err != nil {
@@ -530,19 +467,11 @@ func strategicPatchObject(
 	}
 
 	patchMap := make(map[string]interface{})
-	var strictErrs []error
-	if validationDirective == metav1.FieldValidationWarn || validationDirective == metav1.FieldValidationStrict {
-		strictErrs, err = kjson.UnmarshalStrict(patchBytes, &patchMap)
-		if err != nil {
-			return errors.NewBadRequest(err.Error())
-		}
-	} else {
-		if err = kjson.UnmarshalCaseSensitivePreserveInts(patchBytes, &patchMap); err != nil {
-			return errors.NewBadRequest(err.Error())
-		}
+	if err := json.Unmarshal(patchBytes, &patchMap); err != nil {
+		return errors.NewBadRequest(err.Error())
 	}
 
-	if err := applyPatchToObject(requestContext, defaulter, originalObjMap, patchMap, objToUpdate, schemaReferenceObj, strictErrs, validationDirective); err != nil {
+	if err := applyPatchToObject(defaulter, originalObjMap, patchMap, objToUpdate, schemaReferenceObj); err != nil {
 		return err
 	}
 	return nil
@@ -551,16 +480,16 @@ func strategicPatchObject(
 // applyPatch is called every time GuaranteedUpdate asks for the updated object,
 // and is given the currently persisted object as input.
 // TODO: rename this function because the name implies it is related to applyPatcher
-func (p *patcher) applyPatch(ctx context.Context, _, currentObject runtime.Object) (objToUpdate runtime.Object, patchErr error) {
+func (p *patcher) applyPatch(_ context.Context, _, currentObject runtime.Object) (objToUpdate runtime.Object, patchErr error) {
 	// Make sure we actually have a persisted currentObject
 	p.trace.Step("About to apply patch")
 	currentObjectHasUID, err := hasUID(currentObject)
 	if err != nil {
 		return nil, err
 	} else if !currentObjectHasUID {
-		objToUpdate, patchErr = p.mechanism.createNewObject(ctx)
+		objToUpdate, patchErr = p.mechanism.createNewObject()
 	} else {
-		objToUpdate, patchErr = p.mechanism.applyPatchToCurrentObject(ctx, currentObject)
+		objToUpdate, patchErr = p.mechanism.applyPatchToCurrentObject(currentObject)
 	}
 
 	if patchErr != nil {
@@ -636,13 +565,12 @@ func (p *patcher) patchResource(ctx context.Context, scope *RequestScope) (runti
 	// this case is unreachable if ServerSideApply is not enabled because we will have already rejected the content type
 	case types.ApplyPatchType:
 		p.mechanism = &applyPatcher{
-			fieldManager:        scope.FieldManager,
-			patch:               p.patchBytes,
-			options:             p.options,
-			creater:             p.creater,
-			kind:                p.kind,
-			userAgent:           p.userAgent,
-			validationDirective: p.validationDirective,
+			fieldManager: scope.FieldManager,
+			patch:        p.patchBytes,
+			options:      p.options,
+			creater:      p.creater,
+			kind:         p.kind,
+			userAgent:    p.userAgent,
 		}
 		p.forceAllowCreate = true
 	default:
@@ -663,8 +591,7 @@ func (p *patcher) patchResource(ctx context.Context, scope *RequestScope) (runti
 		wasCreated = created
 		return updateObject, updateErr
 	}
-	result, err := finisher.FinishRequest(ctx, func() (runtime.Object, error) {
-
+	result, err := finishRequest(p.timeout, func() (runtime.Object, error) {
 		result, err := requestFunc()
 		// If the object wasn't committed to storage because it's serialized size was too large,
 		// it is safe to remove managedFields (which can be large) and try again.
@@ -691,14 +618,11 @@ func (p *patcher) patchResource(ctx context.Context, scope *RequestScope) (runti
 // <originalMap> and stores the result in <objToUpdate>.
 // NOTE: <objToUpdate> must be a versioned object.
 func applyPatchToObject(
-	requestContext context.Context,
 	defaulter runtime.ObjectDefaulter,
 	originalMap map[string]interface{},
 	patchMap map[string]interface{},
 	objToUpdate runtime.Object,
 	schemaReferenceObj runtime.Object,
-	strictErrs []error,
-	validationDirective string,
 ) error {
 	patchedObjMap, err := strategicpatch.StrategicMergeMapPatch(originalMap, patchMap, schemaReferenceObj)
 	if err != nil {
@@ -706,38 +630,11 @@ func applyPatchToObject(
 	}
 
 	// Rather than serialize the patched map to JSON, then decode it to an object, we go directly from a map to an object
-	converter := runtime.DefaultUnstructuredConverter
-	returnUnknownFields := validationDirective == metav1.FieldValidationWarn || validationDirective == metav1.FieldValidationStrict
-	if err := converter.FromUnstructuredWithValidation(patchedObjMap, objToUpdate, returnUnknownFields); err != nil {
-		strictError, isStrictError := runtime.AsStrictDecodingError(err)
-		switch {
-		case !isStrictError:
-			// disregard any sttrictErrs, because it's an incomplete
-			// list of strict errors given that we don't know what fields were
-			// unknown because StrategicMergeMapPatch failed.
-			// Non-strict errors trump in this case.
-			return errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
-				field.Invalid(field.NewPath("patch"), fmt.Sprintf("%+v", patchMap), err.Error()),
-			})
-		case validationDirective == metav1.FieldValidationWarn:
-			addStrictDecodingWarnings(requestContext, append(strictErrs, strictError.Errors()...))
-		default:
-			strictDecodingError := runtime.NewStrictDecodingError(append(strictErrs, strictError.Errors()...))
-			return errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
-				field.Invalid(field.NewPath("patch"), fmt.Sprintf("%+v", patchMap), strictDecodingError.Error()),
-			})
-		}
-	} else if len(strictErrs) > 0 {
-		switch {
-		case validationDirective == metav1.FieldValidationWarn:
-			addStrictDecodingWarnings(requestContext, strictErrs)
-		default:
-			return errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
-				field.Invalid(field.NewPath("patch"), fmt.Sprintf("%+v", patchMap), runtime.NewStrictDecodingError(strictErrs).Error()),
-			})
-		}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(patchedObjMap, objToUpdate); err != nil {
+		return errors.NewInvalid(schema.GroupKind{}, "", field.ErrorList{
+			field.Invalid(field.NewPath("patch"), fmt.Sprintf("%+v", patchMap), err.Error()),
+		})
 	}
-
 	// Decoding from JSON to a versioned object would apply defaults, so we do the same here
 	defaulter.Default(objToUpdate)
 
@@ -762,9 +659,8 @@ func patchToUpdateOptions(po *metav1.PatchOptions) *metav1.UpdateOptions {
 		return nil
 	}
 	uo := &metav1.UpdateOptions{
-		DryRun:          po.DryRun,
-		FieldManager:    po.FieldManager,
-		FieldValidation: po.FieldValidation,
+		DryRun:       po.DryRun,
+		FieldManager: po.FieldManager,
 	}
 	uo.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("UpdateOptions"))
 	return uo
@@ -776,9 +672,8 @@ func patchToCreateOptions(po *metav1.PatchOptions) *metav1.CreateOptions {
 		return nil
 	}
 	co := &metav1.CreateOptions{
-		DryRun:          po.DryRun,
-		FieldManager:    po.FieldManager,
-		FieldValidation: po.FieldValidation,
+		DryRun:       po.DryRun,
+		FieldManager: po.FieldManager,
 	}
 	co.TypeMeta.SetGroupVersionKind(metav1.SchemeGroupVersion.WithKind("CreateOptions"))
 	return co

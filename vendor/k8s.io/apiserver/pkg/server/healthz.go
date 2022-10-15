@@ -21,8 +21,8 @@ import (
 	"net/http"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/apiserver/pkg/server/healthz"
-	"k8s.io/utils/clock"
 )
 
 // AddHealthChecks adds HealthCheck(s) to health endpoints (healthz, livez, readyz) but
@@ -53,14 +53,11 @@ func (s *GenericAPIServer) addHealthChecks(livezGracePeriod time.Duration, check
 		return fmt.Errorf("unable to add because the healthz endpoint has already been created")
 	}
 	s.healthzChecks = append(s.healthzChecks, checks...)
-	if err := s.AddLivezChecks(livezGracePeriod, checks...); err != nil {
-		return err
-	}
-	return s.AddReadyzChecks(checks...)
+	return s.addLivezChecks(livezGracePeriod, checks...)
 }
 
-// AddReadyzChecks allows you to add a HealthCheck to readyz.
-func (s *GenericAPIServer) AddReadyzChecks(checks ...healthz.HealthChecker) error {
+// addReadyzChecks allows you to add a HealthCheck to readyz.
+func (s *GenericAPIServer) addReadyzChecks(checks ...healthz.HealthChecker) error {
 	s.readyzLock.Lock()
 	defer s.readyzLock.Unlock()
 	if s.readyzChecksInstalled {
@@ -70,8 +67,9 @@ func (s *GenericAPIServer) AddReadyzChecks(checks ...healthz.HealthChecker) erro
 	return nil
 }
 
-// AddLivezChecks allows you to add a HealthCheck to livez.
-func (s *GenericAPIServer) AddLivezChecks(delay time.Duration, checks ...healthz.HealthChecker) error {
+// addLivezChecks allows you to add a HealthCheck to livez. It will also automatically add a check to readyz,
+// since we want to avoid being ready when we are not live.
+func (s *GenericAPIServer) addLivezChecks(delay time.Duration, checks ...healthz.HealthChecker) error {
 	s.livezLock.Lock()
 	defer s.livezLock.Unlock()
 	if s.livezChecksInstalled {
@@ -80,14 +78,14 @@ func (s *GenericAPIServer) AddLivezChecks(delay time.Duration, checks ...healthz
 	for _, check := range checks {
 		s.livezChecks = append(s.livezChecks, delayedHealthCheck(check, s.livezClock, delay))
 	}
-	return nil
+	return s.addReadyzChecks(checks...)
 }
 
 // addReadyzShutdownCheck is a convenience function for adding a readyz shutdown check, so
 // that we can register that the api-server is no longer ready while we attempt to gracefully
 // shutdown.
 func (s *GenericAPIServer) addReadyzShutdownCheck(stopCh <-chan struct{}) error {
-	return s.AddReadyzChecks(shutdownCheck{stopCh})
+	return s.addReadyzChecks(shutdownCheck{stopCh})
 }
 
 // installHealthz creates the healthz endpoint for this server
@@ -103,10 +101,7 @@ func (s *GenericAPIServer) installReadyz() {
 	s.readyzLock.Lock()
 	defer s.readyzLock.Unlock()
 	s.readyzChecksInstalled = true
-	healthz.InstallReadyzHandlerWithHealthyFunc(s.Handler.NonGoRestfulMux, func() {
-		// note: InstallReadyzHandlerWithHealthyFunc guarantees that this is called only once
-		s.lifecycleSignals.HasBeenReady.Signal()
-	}, s.readyzChecks...)
+	healthz.InstallReadyzHandler(s.Handler.NonGoRestfulMux, s.readyzChecks...)
 }
 
 // installLivez creates the livez endpoint for this server.

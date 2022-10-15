@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -30,7 +29,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/apimachinery/pkg/util/sets"
 	auditinternal "k8s.io/apiserver/pkg/apis/audit"
 	auditv1 "k8s.io/apiserver/pkg/apis/audit/v1"
 	auditv1alpha1 "k8s.io/apiserver/pkg/apis/audit/v1alpha1"
@@ -249,9 +247,6 @@ func validateGroupVersionString(groupVersion string) error {
 	if !knownGroupVersion(gv) {
 		return fmt.Errorf("invalid group version, allowed versions are %q", knownGroupVersions)
 	}
-	if gv != auditv1.SchemeGroupVersion {
-		klog.Warningf("%q is deprecated and will be removed in a future release, use %q instead", gv, auditv1.SchemeGroupVersion)
-	}
 	return nil
 }
 
@@ -290,20 +285,16 @@ func (o *AuditOptions) ApplyTo(
 		return fmt.Errorf("server config must be non-nil")
 	}
 
-	// 1. Build policy evaluator
-	evaluator, err := o.newPolicyRuleEvaluator()
+	// 1. Build policy checker
+	checker, err := o.newPolicyChecker()
 	if err != nil {
 		return err
 	}
 
 	// 2. Build log backend
 	var logBackend audit.Backend
-	w, err := o.LogOptions.getWriter()
-	if err != nil {
-		return err
-	}
-	if w != nil {
-		if evaluator == nil {
+	if w := o.LogOptions.getWriter(); w != nil {
+		if checker == nil {
 			klog.V(2).Info("No audit policy file provided, no events will be recorded for log backend")
 		} else {
 			logBackend = o.LogOptions.newBackend(w)
@@ -313,12 +304,11 @@ func (o *AuditOptions) ApplyTo(
 	// 3. Build webhook backend
 	var webhookBackend audit.Backend
 	if o.WebhookOptions.enabled() {
-		if evaluator == nil {
+		if checker == nil {
 			klog.V(2).Info("No audit policy file provided, no events will be recorded for webhook backend")
 		} else {
 			if c.EgressSelector != nil {
-				var egressDialer utilnet.DialFunc
-				egressDialer, err = c.EgressSelector.Lookup(egressselector.ControlPlane.AsNetworkContext())
+				egressDialer, err := c.EgressSelector.Lookup(egressselector.ControlPlane.AsNetworkContext())
 				if err != nil {
 					return err
 				}
@@ -344,8 +334,8 @@ func (o *AuditOptions) ApplyTo(
 		dynamicBackend = o.WebhookOptions.TruncateOptions.wrapBackend(webhookBackend, groupVersion)
 	}
 
-	// 5. Set the policy rule evaluator
-	c.AuditPolicyRuleEvaluator = evaluator
+	// 5. Set the policy checker
+	c.AuditPolicyChecker = checker
 
 	// 6. Join the log backend with the webhooks
 	c.AuditBackend = appendBackend(logBackend, dynamicBackend)
@@ -356,7 +346,7 @@ func (o *AuditOptions) ApplyTo(
 	return nil
 }
 
-func (o *AuditOptions) newPolicyRuleEvaluator() (audit.PolicyRuleEvaluator, error) {
+func (o *AuditOptions) newPolicyChecker() (policy.Checker, error) {
 	if o.PolicyFile == "" {
 		return nil, nil
 	}
@@ -365,7 +355,7 @@ func (o *AuditOptions) newPolicyRuleEvaluator() (audit.PolicyRuleEvaluator, erro
 	if err != nil {
 		return nil, fmt.Errorf("loading audit policy file: %v", err)
 	}
-	return policy.NewPolicyRuleEvaluator(p), nil
+	return policy.NewChecker(p), nil
 }
 
 func (o *AuditBatchOptions) AddFlags(pluginName string, fs *pflag.FlagSet) {
@@ -452,7 +442,7 @@ func (o *AuditLogOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.IntVar(&o.MaxAge, "audit-log-maxage", o.MaxAge,
 		"The maximum number of days to retain old audit log files based on the timestamp encoded in their filename.")
 	fs.IntVar(&o.MaxBackups, "audit-log-maxbackup", o.MaxBackups,
-		"The maximum number of old audit log files to retain. Setting a value of 0 will mean there's no restriction on the number of files.")
+		"The maximum number of old audit log files to retain.")
 	fs.IntVar(&o.MaxSize, "audit-log-maxsize", o.MaxSize,
 		"The maximum size in megabytes of the audit log file before it gets rotated.")
 	fs.StringVar(&o.Format, "audit-log-format", o.Format,
@@ -484,7 +474,14 @@ func (o *AuditLogOptions) Validate() []error {
 	}
 
 	// Check log format
-	if !sets.NewString(pluginlog.AllowedFormats...).Has(o.Format) {
+	validFormat := false
+	for _, f := range pluginlog.AllowedFormats {
+		if f == o.Format {
+			validFormat = true
+			break
+		}
+	}
+	if !validFormat {
 		allErrors = append(allErrors, fmt.Errorf("invalid audit log format %s, allowed formats are %q", o.Format, strings.Join(pluginlog.AllowedFormats, ",")))
 	}
 
@@ -507,38 +504,22 @@ func (o *AuditLogOptions) enabled() bool {
 	return o != nil && o.Path != ""
 }
 
-func (o *AuditLogOptions) getWriter() (io.Writer, error) {
+func (o *AuditLogOptions) getWriter() io.Writer {
 	if !o.enabled() {
-		return nil, nil
+		return nil
 	}
 
-	if o.Path == "-" {
-		return os.Stdout, nil
+	var w io.Writer = os.Stdout
+	if o.Path != "-" {
+		w = &lumberjack.Logger{
+			Filename:   o.Path,
+			MaxAge:     o.MaxAge,
+			MaxBackups: o.MaxBackups,
+			MaxSize:    o.MaxSize,
+			Compress:   o.Compress,
+		}
 	}
-
-	if err := o.ensureLogFile(); err != nil {
-		return nil, fmt.Errorf("ensureLogFile: %w", err)
-	}
-
-	return &lumberjack.Logger{
-		Filename:   o.Path,
-		MaxAge:     o.MaxAge,
-		MaxBackups: o.MaxBackups,
-		MaxSize:    o.MaxSize,
-		Compress:   o.Compress,
-	}, nil
-}
-
-func (o *AuditLogOptions) ensureLogFile() error {
-	if err := os.MkdirAll(filepath.Dir(o.Path), 0700); err != nil {
-		return err
-	}
-	mode := os.FileMode(0600)
-	f, err := os.OpenFile(o.Path, os.O_CREATE|os.O_APPEND|os.O_RDWR, mode)
-	if err != nil {
-		return err
-	}
-	return f.Close()
+	return w
 }
 
 func (o *AuditLogOptions) newBackend(w io.Writer) audit.Backend {

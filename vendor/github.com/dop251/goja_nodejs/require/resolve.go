@@ -17,6 +17,11 @@ func (r *RequireModule) resolve(modpath string) (module *js.Object, err error) {
 		return nil, IllegalModuleNameError
 	}
 
+	module, err = r.loadNative(modpath)
+	if err == nil {
+		return
+	}
+
 	var start string
 	err = nil
 	if path.IsAbs(origPath) {
@@ -47,11 +52,6 @@ func (r *RequireModule) resolve(modpath string) (module *js.Object, err error) {
 	}
 
 	if module == nil && err == nil {
-		module, err = r.loadNative(modpath)
-		if err == nil {
-			return
-		}
-
 		err = InvalidModuleError
 	}
 	return
@@ -162,7 +162,7 @@ func (r *RequireModule) loadNodeModules(modpath, start string) (module *js.Objec
 		start = parent
 	}
 
-	return
+	return nil, InvalidModuleError
 }
 
 func (r *RequireModule) getCurrentModulePath() string {

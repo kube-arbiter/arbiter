@@ -28,12 +28,11 @@ import (
 	"strings"
 	"time"
 
-	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/clientv3"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/conversion"
@@ -65,16 +64,14 @@ func (d authenticatedDataString) AuthenticatedData() []byte {
 var _ value.Context = authenticatedDataString("")
 
 type store struct {
-	client              *clientv3.Client
-	codec               runtime.Codec
-	versioner           storage.Versioner
-	transformer         value.Transformer
-	pathPrefix          string
-	groupResource       schema.GroupResource
-	groupResourceString string
-	watcher             *watcher
-	pagingEnabled       bool
-	leaseManager        *leaseManager
+	client        *clientv3.Client
+	codec         runtime.Codec
+	versioner     storage.Versioner
+	transformer   value.Transformer
+	pathPrefix    string
+	watcher       *watcher
+	pagingEnabled bool
+	leaseManager  *leaseManager
 }
 
 type objState struct {
@@ -86,11 +83,11 @@ type objState struct {
 }
 
 // New returns an etcd3 implementation of storage.Interface.
-func New(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) storage.Interface {
-	return newStore(c, codec, newFunc, prefix, groupResource, transformer, pagingEnabled, leaseManagerConfig)
+func New(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) storage.Interface {
+	return newStore(c, codec, newFunc, prefix, transformer, pagingEnabled, leaseManagerConfig)
 }
 
-func newStore(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, groupResource schema.GroupResource, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) *store {
+func newStore(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Object, prefix string, transformer value.Transformer, pagingEnabled bool, leaseManagerConfig LeaseManagerConfig) *store {
 	versioner := APIObjectVersioner{}
 	result := &store{
 		client:        c,
@@ -101,11 +98,9 @@ func newStore(c *clientv3.Client, codec runtime.Codec, newFunc func() runtime.Ob
 		// for compatibility with etcd2 impl.
 		// no-op for default prefix of '/registry'.
 		// keeps compatibility with etcd2 impl for custom prefixes that don't start with '/'
-		pathPrefix:          path.Join("/", prefix),
-		groupResource:       groupResource,
-		groupResourceString: groupResource.String(),
-		watcher:             newWatcher(c, codec, newFunc, versioner, transformer),
-		leaseManager:        newDefaultLeaseManager(c, leaseManagerConfig),
+		pathPrefix:   path.Join("/", prefix),
+		watcher:      newWatcher(c, codec, newFunc, versioner, transformer),
+		leaseManager: newDefaultLeaseManager(c, leaseManagerConfig),
 	}
 	return result
 }
@@ -190,97 +185,35 @@ func (s *store) Create(ctx context.Context, key string, obj, out runtime.Object,
 }
 
 // Delete implements storage.Interface.Delete.
-func (s *store) Delete(
-	ctx context.Context, key string, out runtime.Object, preconditions *storage.Preconditions,
-	validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
+func (s *store) Delete(ctx context.Context, key string, out runtime.Object, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc) error {
 	v, err := conversion.EnforcePtr(out)
 	if err != nil {
 		return fmt.Errorf("unable to convert output object to pointer: %v", err)
 	}
 	key = path.Join(s.pathPrefix, key)
-	return s.conditionalDelete(ctx, key, out, v, preconditions, validateDeletion, cachedExistingObject)
+	return s.conditionalDelete(ctx, key, out, v, preconditions, validateDeletion)
 }
 
-func (s *store) conditionalDelete(
-	ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions,
-	validateDeletion storage.ValidateObjectFunc, cachedExistingObject runtime.Object) error {
-	getCurrentState := func() (*objState, error) {
-		startTime := time.Now()
-		getResp, err := s.client.KV.Get(ctx, key)
-		metrics.RecordEtcdRequestLatency("get", getTypeName(out), startTime)
-		if err != nil {
-			return nil, err
-		}
-		return s.getState(getResp, key, v, false)
-	}
-
-	var origState *objState
-	var err error
-	var origStateIsCurrent bool
-	if cachedExistingObject != nil {
-		origState, err = s.getStateFromObject(cachedExistingObject)
-	} else {
-		origState, err = getCurrentState()
-		origStateIsCurrent = true
-	}
+func (s *store) conditionalDelete(ctx context.Context, key string, out runtime.Object, v reflect.Value, preconditions *storage.Preconditions, validateDeletion storage.ValidateObjectFunc) error {
+	startTime := time.Now()
+	getResp, err := s.client.KV.Get(ctx, key)
+	metrics.RecordEtcdRequestLatency("get", getTypeName(out), startTime)
 	if err != nil {
 		return err
 	}
-
 	for {
+		origState, err := s.getState(getResp, key, v, false)
+		if err != nil {
+			return err
+		}
 		if preconditions != nil {
 			if err := preconditions.Check(key, origState.obj); err != nil {
-				if origStateIsCurrent {
-					return err
-				}
-
-				// It's possible we're working with stale data.
-				// Remember the revision of the potentially stale data and the resulting update error
-				cachedRev := origState.rev
-				cachedUpdateErr := err
-
-				// Actually fetch
-				origState, err = getCurrentState()
-				if err != nil {
-					return err
-				}
-				origStateIsCurrent = true
-
-				// it turns out our cached data was not stale, return the error
-				if cachedRev == origState.rev {
-					return cachedUpdateErr
-				}
-
-				// Retry
-				continue
+				return err
 			}
 		}
 		if err := validateDeletion(ctx, origState.obj); err != nil {
-			if origStateIsCurrent {
-				return err
-			}
-
-			// It's possible we're working with stale data.
-			// Remember the revision of the potentially stale data and the resulting update error
-			cachedRev := origState.rev
-			cachedUpdateErr := err
-
-			// Actually fetch
-			origState, err = getCurrentState()
-			if err != nil {
-				return err
-			}
-			origStateIsCurrent = true
-
-			// it turns out our cached data was not stale, return the error
-			if cachedRev == origState.rev {
-				return cachedUpdateErr
-			}
-
-			// Retry
-			continue
+			return err
 		}
-
 		startTime := time.Now()
 		txnResp, err := s.client.KV.Txn(ctx).If(
 			clientv3.Compare(clientv3.ModRevision(key), "=", origState.rev),
@@ -294,13 +227,8 @@ func (s *store) conditionalDelete(
 			return err
 		}
 		if !txnResp.Succeeded {
-			getResp := (*clientv3.GetResponse)(txnResp.Responses[0].GetResponseRange())
+			getResp = (*clientv3.GetResponse)(txnResp.Responses[0].GetResponseRange())
 			klog.V(4).Infof("deletion of %s failed because of a conflict, going to retry", key)
-			origState, err = s.getState(getResp, key, v, false)
-			if err != nil {
-				return err
-			}
-			origStateIsCurrent = true
 			continue
 		}
 		return decode(s.codec, s.versioner, origState.data, out, origState.rev)
@@ -310,7 +238,7 @@ func (s *store) conditionalDelete(
 // GuaranteedUpdate implements storage.Interface.GuaranteedUpdate.
 func (s *store) GuaranteedUpdate(
 	ctx context.Context, key string, out runtime.Object, ignoreNotFound bool,
-	preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, cachedExistingObject runtime.Object) error {
+	preconditions *storage.Preconditions, tryUpdate storage.UpdateFunc, suggestion runtime.Object) error {
 	trace := utiltrace.New("GuaranteedUpdate etcd3", utiltrace.Field{"type", getTypeName(out)})
 	defer trace.LogIfLong(500 * time.Millisecond)
 
@@ -331,15 +259,18 @@ func (s *store) GuaranteedUpdate(
 	}
 
 	var origState *objState
-	var origStateIsCurrent bool
-	if cachedExistingObject != nil {
-		origState, err = s.getStateFromObject(cachedExistingObject)
+	var mustCheckData bool
+	if suggestion != nil {
+		origState, err = s.getStateFromObject(suggestion)
+		if err != nil {
+			return err
+		}
+		mustCheckData = true
 	} else {
 		origState, err = getCurrentState()
-		origStateIsCurrent = true
-	}
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
 	}
 	trace.Step("initial value restored")
 
@@ -347,7 +278,7 @@ func (s *store) GuaranteedUpdate(
 	for {
 		if err := preconditions.Check(key, origState.obj); err != nil {
 			// If our data is already up to date, return the error
-			if origStateIsCurrent {
+			if !mustCheckData {
 				return err
 			}
 
@@ -357,7 +288,7 @@ func (s *store) GuaranteedUpdate(
 			if err != nil {
 				return err
 			}
-			origStateIsCurrent = true
+			mustCheckData = false
 			// Retry
 			continue
 		}
@@ -365,7 +296,7 @@ func (s *store) GuaranteedUpdate(
 		ret, ttl, err := s.updateState(origState, tryUpdate)
 		if err != nil {
 			// If our data is already up to date, return the error
-			if origStateIsCurrent {
+			if !mustCheckData {
 				return err
 			}
 
@@ -379,7 +310,7 @@ func (s *store) GuaranteedUpdate(
 			if err != nil {
 				return err
 			}
-			origStateIsCurrent = true
+			mustCheckData = false
 
 			// it turns out our cached data was not stale, return the error
 			if cachedRev == origState.rev {
@@ -398,12 +329,12 @@ func (s *store) GuaranteedUpdate(
 			// if we skipped the original Get in this loop, we must refresh from
 			// etcd in order to be sure the data in the store is equivalent to
 			// our desired serialization
-			if !origStateIsCurrent {
+			if mustCheckData {
 				origState, err = getCurrentState()
 				if err != nil {
 					return err
 				}
-				origStateIsCurrent = true
+				mustCheckData = false
 				if !bytes.Equal(data, origState.data) {
 					// original data changed, restart loop
 					continue
@@ -447,7 +378,7 @@ func (s *store) GuaranteedUpdate(
 				return err
 			}
 			trace.Step("Retry value restored")
-			origStateIsCurrent = true
+			mustCheckData = false
 			continue
 		}
 		putResp := txnResp.Responses[0].GetResponsePut()
@@ -729,14 +660,6 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 	var lastKey []byte
 	var hasMore bool
 	var getResp *clientv3.GetResponse
-	var numFetched int
-	var numEvald int
-	// Because these metrics are for understanding the costs of handling LIST requests,
-	// get them recorded even in error cases.
-	defer func() {
-		numReturn := v.Len()
-		metrics.RecordStorageListMetrics(s.groupResourceString, numFetched, numEvald, numReturn)
-	}()
 	for {
 		startTime := time.Now()
 		getResp, err = s.client.KV.Get(ctx, key, options...)
@@ -744,7 +667,6 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		if err != nil {
 			return interpretListError(err, len(pred.Continue) > 0, continueKey, keyPrefix)
 		}
-		numFetched += len(getResp.Kvs)
 		if err = s.validateMinimumResourceVersion(resourceVersion, uint64(getResp.Header.Revision)); err != nil {
 			return err
 		}
@@ -763,7 +685,7 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 		}
 
 		// take items from the response until the bucket is full, filtering as we go
-		for i, kv := range getResp.Kvs {
+		for _, kv := range getResp.Kvs {
 			if paging && int64(v.Len()) >= pred.Limit {
 				hasMore = true
 				break
@@ -778,10 +700,6 @@ func (s *store) List(ctx context.Context, key string, opts storage.ListOptions, 
 			if err := appendListItem(v, data, uint64(kv.ModRevision), pred, s.codec, s.versioner, newItemFunc); err != nil {
 				return err
 			}
-			numEvald++
-
-			// free kv early. Long lists can take O(seconds) to decode.
-			getResp.Kvs[i] = nil
 		}
 
 		// indicate to the client which resource version was returned
@@ -851,7 +769,7 @@ func growSlice(v reflect.Value, maxCapacity int, sizes ...int) {
 		return
 	}
 	if v.Len() > 0 {
-		extra := reflect.MakeSlice(v.Type(), v.Len(), max)
+		extra := reflect.MakeSlice(v.Type(), 0, max)
 		reflect.Copy(extra, v)
 		v.Set(extra)
 	} else {

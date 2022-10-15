@@ -47,10 +47,6 @@ func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
 		if !utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationAWS) {
 			return false
 		}
-	case csilibplugins.PortworxVolumePluginName:
-		if !utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationPortworx) {
-			return false
-		}
 	case csilibplugins.GCEPDInTreePluginName:
 		if !utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationGCE) {
 			return false
@@ -61,10 +57,6 @@ func isCSIMigrationOn(csiNode *storagev1.CSINode, pluginName string) bool {
 		}
 	case csilibplugins.CinderInTreePluginName:
 		if !utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationOpenStack) {
-			return false
-		}
-	case csilibplugins.RBDVolumePluginName:
-		if !utilfeature.DefaultFeatureGate.Enabled(features.CSIMigrationRBD) {
 			return false
 		}
 	default:

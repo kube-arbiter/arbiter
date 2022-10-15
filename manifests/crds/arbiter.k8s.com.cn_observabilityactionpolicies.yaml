@@ -71,8 +71,8 @@ spec:
                       type: string
                     expressionValue:
                       type: string
-                    resourceName:
-                      description: ResourceName is the name of the pod
+                    podName:
+                      description: PodName is the name of the pod
                       type: string
                   type: object
                 type: array

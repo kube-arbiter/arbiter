@@ -17,8 +17,7 @@ limitations under the License.
 package cache
 
 import (
-	v1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 )
 
@@ -94,12 +93,10 @@ type Cache interface {
 	IsAssumedPod(pod *v1.Pod) (bool, error)
 
 	// AddNode adds overall information about node.
-	// It returns a clone of added NodeInfo object.
-	AddNode(node *v1.Node) *framework.NodeInfo
+	AddNode(node *v1.Node) error
 
 	// UpdateNode updates overall information about node.
-	// It returns a clone of updated NodeInfo object.
-	UpdateNode(oldNode, newNode *v1.Node) *framework.NodeInfo
+	UpdateNode(oldNode, newNode *v1.Node) error
 
 	// RemoveNode removes overall information about node.
 	RemoveNode(node *v1.Node) error
@@ -117,6 +114,6 @@ type Cache interface {
 
 // Dump is a dump of the cache state.
 type Dump struct {
-	AssumedPods sets.String
+	AssumedPods map[string]bool
 	Nodes       map[string]*framework.NodeInfo
 }

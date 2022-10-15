@@ -70,14 +70,10 @@ type reflectFieldInfo struct {
 	Anonymous bool
 }
 
-type reflectFieldsInfo struct {
-	Fields map[string]reflectFieldInfo
-	Names  []string
-}
-
-type reflectMethodsInfo struct {
-	Methods map[string]int
-	Names   []string
+type reflectTypeInfo struct {
+	Fields                  map[string]reflectFieldInfo
+	Methods                 map[string]int
+	FieldNames, MethodNames []string
 }
 
 type reflectValueWrapper interface {
@@ -103,12 +99,9 @@ func copyReflectValueWrapper(w reflectValueWrapper) {
 
 type objectGoReflect struct {
 	baseObject
-	origValue, fieldsValue reflect.Value
+	origValue, value reflect.Value
 
-	fieldsInfo  *reflectFieldsInfo
-	methodsInfo *reflectMethodsInfo
-
-	methodsValue reflect.Value
+	valueTypeInfo, origValueTypeInfo *reflectTypeInfo
 
 	valueCache map[string]reflectValueWrapper
 
@@ -119,7 +112,7 @@ type objectGoReflect struct {
 
 func (o *objectGoReflect) init() {
 	o.baseObject.init()
-	switch o.fieldsValue.Kind() {
+	switch o.value.Kind() {
 	case reflect.Bool:
 		o.class = classBoolean
 		o.prototype = o.val.runtime.global.BooleanPrototype
@@ -144,34 +137,13 @@ func (o *objectGoReflect) init() {
 	default:
 		o.class = classObject
 		o.prototype = o.val.runtime.global.ObjectPrototype
-	}
-
-	if o.fieldsValue.Kind() == reflect.Struct {
-		o.fieldsInfo = o.val.runtime.fieldsInfo(o.fieldsValue.Type())
-	}
-
-	var methodsType reflect.Type
-	// Always use pointer type for non-interface values to be able to access both methods defined on
-	// the literal type and on the pointer.
-	if o.fieldsValue.Kind() != reflect.Interface {
-		methodsType = reflect.PtrTo(o.fieldsValue.Type())
-	} else {
-		methodsType = o.fieldsValue.Type()
-	}
-
-	o.methodsInfo = o.val.runtime.methodsInfo(methodsType)
-
-	// Container values and values that have at least one method defined on the pointer type
-	// need to be addressable.
-	if !o.origValue.CanAddr() && (isContainer(o.origValue.Kind()) || len(o.methodsInfo.Names) > 0) {
-		value := reflect.New(o.origValue.Type()).Elem()
-		value.Set(o.origValue)
-		o.origValue = value
-		if value.Kind() != reflect.Ptr {
-			o.fieldsValue = value
+		if !o.value.CanAddr() {
+			value := reflect.New(o.value.Type()).Elem()
+			value.Set(o.value)
+			o.origValue = value
+			o.value = value
 		}
 	}
-
 	o.extensible = true
 
 	switch o.origValue.Interface().(type) {
@@ -186,11 +158,8 @@ func (o *objectGoReflect) init() {
 		o.baseObject._putProp("valueOf", o.val.runtime.newNativeFunc(o.valueOfFunc, nil, "valueOf", nil, 0), true, false, true)
 	}
 
-	if len(o.methodsInfo.Names) > 0 && o.fieldsValue.Kind() != reflect.Interface {
-		o.methodsValue = o.fieldsValue.Addr()
-	} else {
-		o.methodsValue = o.fieldsValue
-	}
+	o.valueTypeInfo = o.val.runtime.typeInfo(o.value.Type())
+	o.origValueTypeInfo = o.val.runtime.typeInfo(o.origValue.Type())
 
 	if j, ok := o.origValue.Interface().(JsonEncodable); ok {
 		o.toJson = j.JsonEncodable
@@ -213,20 +182,16 @@ func (o *objectGoReflect) getStr(name unistring.String, receiver Value) Value {
 }
 
 func (o *objectGoReflect) _getField(jsName string) reflect.Value {
-	if o.fieldsInfo != nil {
-		if info, exists := o.fieldsInfo.Fields[jsName]; exists {
-			return o.fieldsValue.FieldByIndex(info.Index)
-		}
+	if info, exists := o.valueTypeInfo.Fields[jsName]; exists {
+		return o.value.FieldByIndex(info.Index)
 	}
 
 	return reflect.Value{}
 }
 
 func (o *objectGoReflect) _getMethod(jsName string) reflect.Value {
-	if o.methodsInfo != nil {
-		if idx, exists := o.methodsInfo.Methods[jsName]; exists {
-			return o.methodsValue.Method(idx)
-		}
+	if idx, exists := o.origValueTypeInfo.Methods[jsName]; exists {
+		return o.origValue.Method(idx)
 	}
 
 	return reflect.Value{}
@@ -276,7 +241,7 @@ func (o *objectGoReflect) _getFieldValue(name string) Value {
 }
 
 func (o *objectGoReflect) _get(name string) Value {
-	if o.fieldsValue.Kind() == reflect.Struct {
+	if o.value.Kind() == reflect.Struct {
 		if ret := o._getFieldValue(name); ret != nil {
 			return ret
 		}
@@ -291,7 +256,7 @@ func (o *objectGoReflect) _get(name string) Value {
 
 func (o *objectGoReflect) getOwnPropStr(name unistring.String) Value {
 	n := name.String()
-	if o.fieldsValue.Kind() == reflect.Struct {
+	if o.value.Kind() == reflect.Struct {
 		if v := o._getFieldValue(n); v != nil {
 			return &valueProperty{
 				value:      v,
@@ -333,7 +298,7 @@ func (o *objectGoReflect) setForeignIdx(idx valueInt, val, receiver Value, throw
 }
 
 func (o *objectGoReflect) _put(name string, val Value, throw bool) (has, ok bool) {
-	if o.fieldsValue.Kind() == reflect.Struct {
+	if o.value.Kind() == reflect.Struct {
 		if v := o._getField(name); v.IsValid() {
 			cached := o.valueCache[name]
 			if cached != nil {
@@ -394,7 +359,7 @@ func (o *objectGoReflect) defineOwnPropertyStr(name unistring.String, descr Prop
 }
 
 func (o *objectGoReflect) _has(name string) bool {
-	if o.fieldsValue.Kind() == reflect.Struct {
+	if o.value.Kind() == reflect.Struct {
 		if v := o._getField(name); v.IsValid() {
 			return true
 		}
@@ -410,15 +375,15 @@ func (o *objectGoReflect) hasOwnPropertyStr(name unistring.String) bool {
 }
 
 func (o *objectGoReflect) _valueOfInt() Value {
-	return intToValue(o.fieldsValue.Int())
+	return intToValue(o.value.Int())
 }
 
 func (o *objectGoReflect) _valueOfUint() Value {
-	return intToValue(int64(o.fieldsValue.Uint()))
+	return intToValue(int64(o.value.Uint()))
 }
 
 func (o *objectGoReflect) _valueOfBool() Value {
-	if o.fieldsValue.Bool() {
+	if o.value.Bool() {
 		return valueTrue
 	} else {
 		return valueFalse
@@ -426,7 +391,7 @@ func (o *objectGoReflect) _valueOfBool() Value {
 }
 
 func (o *objectGoReflect) _valueOfFloat() Value {
-	return floatToValue(o.fieldsValue.Float())
+	return floatToValue(o.value.Float())
 }
 
 func (o *objectGoReflect) _toStringStringer() Value {
@@ -434,11 +399,11 @@ func (o *objectGoReflect) _toStringStringer() Value {
 }
 
 func (o *objectGoReflect) _toStringString() Value {
-	return newStringValue(o.fieldsValue.String())
+	return newStringValue(o.value.String())
 }
 
 func (o *objectGoReflect) _toStringBool() Value {
-	if o.fieldsValue.Bool() {
+	if o.value.Bool() {
 		return stringTrue
 	} else {
 		return stringFalse
@@ -495,7 +460,7 @@ type goreflectPropIter struct {
 }
 
 func (i *goreflectPropIter) nextField() (propIterItem, iterNextFunc) {
-	names := i.o.fieldsInfo.Names
+	names := i.o.valueTypeInfo.FieldNames
 	if i.idx < len(names) {
 		name := names[i.idx]
 		i.idx++
@@ -507,7 +472,7 @@ func (i *goreflectPropIter) nextField() (propIterItem, iterNextFunc) {
 }
 
 func (i *goreflectPropIter) nextMethod() (propIterItem, iterNextFunc) {
-	names := i.o.methodsInfo.Names
+	names := i.o.origValueTypeInfo.MethodNames
 	if i.idx < len(names) {
 		name := names[i.idx]
 		i.idx++
@@ -521,7 +486,7 @@ func (o *objectGoReflect) iterateStringKeys() iterNextFunc {
 	r := &goreflectPropIter{
 		o: o,
 	}
-	if o.fieldsInfo != nil {
+	if o.value.Kind() == reflect.Struct {
 		return r.nextField
 	}
 
@@ -530,13 +495,11 @@ func (o *objectGoReflect) iterateStringKeys() iterNextFunc {
 
 func (o *objectGoReflect) stringKeys(_ bool, accum []Value) []Value {
 	// all own keys are enumerable
-	if o.fieldsInfo != nil {
-		for _, name := range o.fieldsInfo.Names {
-			accum = append(accum, newStringValue(name))
-		}
+	for _, name := range o.valueTypeInfo.FieldNames {
+		accum = append(accum, newStringValue(name))
 	}
 
-	for _, name := range o.methodsInfo.Names {
+	for _, name := range o.valueTypeInfo.MethodNames {
 		accum = append(accum, newStringValue(name))
 	}
 
@@ -553,32 +516,31 @@ func (o *objectGoReflect) exportType() reflect.Type {
 
 func (o *objectGoReflect) equal(other objectImpl) bool {
 	if other, ok := other.(*objectGoReflect); ok {
-		k1, k2 := o.fieldsValue.Kind(), other.fieldsValue.Kind()
+		k1, k2 := o.value.Kind(), other.value.Kind()
 		if k1 == k2 {
 			if isContainer(k1) {
-				return o.fieldsValue == other.fieldsValue
+				return o.value == other.value
 			}
-			return o.fieldsValue.Interface() == other.fieldsValue.Interface()
+			return o.value.Interface() == other.value.Interface()
 		}
 	}
 	return false
 }
 
 func (o *objectGoReflect) reflectValue() reflect.Value {
-	return o.fieldsValue
+	return o.value
 }
 
 func (o *objectGoReflect) setReflectValue(v reflect.Value) {
-	o.fieldsValue = v
+	o.value = v
 	o.origValue = v
-	o.methodsValue = v.Addr()
 }
 
 func (o *objectGoReflect) esValue() Value {
 	return o.val
 }
 
-func (r *Runtime) buildFieldInfo(t reflect.Type, index []int, info *reflectFieldsInfo) {
+func (r *Runtime) buildFieldInfo(t reflect.Type, index []int, info *reflectTypeInfo) {
 	n := t.NumField()
 	for i := 0; i < n; i++ {
 		field := t.Field(i)
@@ -592,7 +554,7 @@ func (r *Runtime) buildFieldInfo(t reflect.Type, index []int, info *reflectField
 
 		if name != "" {
 			if inf, exists := info.Fields[name]; !exists {
-				info.Names = append(info.Names, name)
+				info.FieldNames = append(info.FieldNames, name)
 			} else {
 				if len(inf.Index) <= len(index) {
 					continue
@@ -624,16 +586,18 @@ func (r *Runtime) buildFieldInfo(t reflect.Type, index []int, info *reflectField
 	}
 }
 
-var emptyMethodsInfo = reflectMethodsInfo{}
-
-func (r *Runtime) buildMethodsInfo(t reflect.Type) (info *reflectMethodsInfo) {
-	n := t.NumMethod()
-	if n == 0 {
-		return &emptyMethodsInfo
+func (r *Runtime) buildTypeInfo(t reflect.Type) (info *reflectTypeInfo) {
+	info = new(reflectTypeInfo)
+	if t.Kind() == reflect.Struct {
+		info.Fields = make(map[string]reflectFieldInfo)
+		n := t.NumField()
+		info.FieldNames = make([]string, 0, n)
+		r.buildFieldInfo(t, nil, info)
 	}
-	info = new(reflectMethodsInfo)
-	info.Methods = make(map[string]int, n)
-	info.Names = make([]string, 0, n)
+
+	info.Methods = make(map[string]int)
+	n := t.NumMethod()
+	info.MethodNames = make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		method := t.Method(i)
 		name := method.Name
@@ -648,7 +612,7 @@ func (r *Runtime) buildMethodsInfo(t reflect.Type) (info *reflectMethodsInfo) {
 		}
 
 		if _, exists := info.Methods[name]; !exists {
-			info.Names = append(info.Names, name)
+			info.MethodNames = append(info.MethodNames, name)
 		}
 
 		info.Methods[name] = i
@@ -656,36 +620,14 @@ func (r *Runtime) buildMethodsInfo(t reflect.Type) (info *reflectMethodsInfo) {
 	return
 }
 
-func (r *Runtime) buildFieldsInfo(t reflect.Type) (info *reflectFieldsInfo) {
-	info = new(reflectFieldsInfo)
-	n := t.NumField()
-	info.Fields = make(map[string]reflectFieldInfo, n)
-	info.Names = make([]string, 0, n)
-	r.buildFieldInfo(t, nil, info)
-	return
-}
-
-func (r *Runtime) fieldsInfo(t reflect.Type) (info *reflectFieldsInfo) {
+func (r *Runtime) typeInfo(t reflect.Type) (info *reflectTypeInfo) {
 	var exists bool
-	if info, exists = r.fieldsInfoCache[t]; !exists {
-		info = r.buildFieldsInfo(t)
-		if r.fieldsInfoCache == nil {
-			r.fieldsInfoCache = make(map[reflect.Type]*reflectFieldsInfo)
+	if info, exists = r.typeInfoCache[t]; !exists {
+		info = r.buildTypeInfo(t)
+		if r.typeInfoCache == nil {
+			r.typeInfoCache = make(map[reflect.Type]*reflectTypeInfo)
 		}
-		r.fieldsInfoCache[t] = info
-	}
-
-	return
-}
-
-func (r *Runtime) methodsInfo(t reflect.Type) (info *reflectMethodsInfo) {
-	var exists bool
-	if info, exists = r.methodsInfoCache[t]; !exists {
-		info = r.buildMethodsInfo(t)
-		if r.methodsInfoCache == nil {
-			r.methodsInfoCache = make(map[reflect.Type]*reflectMethodsInfo)
-		}
-		r.methodsInfoCache[t] = info
+		r.typeInfoCache[t] = info
 	}
 
 	return
@@ -697,8 +639,7 @@ func (r *Runtime) methodsInfo(t reflect.Type) (info *reflectMethodsInfo) {
 // original unchanged names.
 func (r *Runtime) SetFieldNameMapper(mapper FieldNameMapper) {
 	r.fieldNameMapper = mapper
-	r.fieldsInfoCache = nil
-	r.methodsInfoCache = nil
+	r.typeInfoCache = nil
 }
 
 // TagFieldNameMapper returns a FieldNameMapper that uses the given tagName for struct fields and optionally

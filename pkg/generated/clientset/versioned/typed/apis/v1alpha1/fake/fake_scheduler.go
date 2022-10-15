@@ -105,7 +105,7 @@ func (c *FakeSchedulers) Update(ctx context.Context, scheduler *v1alpha1.Schedul
 // Delete takes name of the scheduler and deletes it. Returns an error if one occurs.
 func (c *FakeSchedulers) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(schedulersResource, c.ns, name, opts), &v1alpha1.Scheduler{})
+		Invokes(testing.NewDeleteAction(schedulersResource, c.ns, name), &v1alpha1.Scheduler{})
 
 	return err
 }

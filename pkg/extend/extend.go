@@ -31,10 +31,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper"
 
+	"github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig"
 	"github.com/kube-arbiter/arbiter/pkg/apis/v1alpha1"
 	"github.com/kube-arbiter/arbiter/pkg/extend/manager"
 	"github.com/kube-arbiter/arbiter/pkg/generated/clientset/versioned"
@@ -283,7 +285,16 @@ func (ex *Arbiter) ScoreExtensions() framework.ScoreExtensions {
 
 func New(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) {
 	klog.V(10).Infof(LogPrefix+"New Arbiter Init Start...%#v", obj)
-	restConfig := handle.KubeConfig()
+	args, ok := obj.(*schedulerconfig.ArbiterArgs)
+	if !ok {
+		return nil, fmt.Errorf(LogPrefix+"want args to be of type ArbiterArgs, got %T", obj)
+	}
+	kubeConfigPath := args.KubeConfigPath
+
+	restConfig, err := clientcmd.BuildConfigFromFlags("", kubeConfigPath)
+	if err != nil {
+		return nil, err
+	}
 	client, err := versioned.NewForConfig(restConfig)
 	if err != nil {
 		return nil, err

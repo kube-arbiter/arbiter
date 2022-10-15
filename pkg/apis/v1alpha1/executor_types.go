@@ -42,8 +42,8 @@ type ObservabilityActionPolicySpec struct {
 
 // ActionInfo is the information to identify whether a resource is updated
 type ActionInfo struct {
-	// ResourceName is the name of the pod
-	ResourceName string `json:"resourceName,omitempty"`
+	// PodName is the name of the pod
+	PodName string `json:"podName,omitempty"`
 
 	ExpressionValue string `json:"expressionValue,omitempty"`
 

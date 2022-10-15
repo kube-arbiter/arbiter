@@ -1,4 +1,3 @@
-//go:build !linux
 // +build !linux
 
 /*
@@ -21,9 +20,8 @@ package volume
 
 import (
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/kubernetes/pkg/volume/util/types"
 )
 
-func SetVolumeOwnership(mounter Mounter, fsGroup *int64, fsGroupChangePolicy *v1.PodFSGroupChangePolicy, completeFunc func(types.CompleteFuncParam)) error {
+func SetVolumeOwnership(mounter Mounter, fsGroup *int64, fsGroupChangePolicy *v1.PodFSGroupChangePolicy, completeFunc func(*error)) error {
 	return nil
 }

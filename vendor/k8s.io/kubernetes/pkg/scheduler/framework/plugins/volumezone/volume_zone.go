@@ -28,10 +28,9 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 	storagelisters "k8s.io/client-go/listers/storage/v1"
 	volumehelpers "k8s.io/cloud-provider/volume/helpers"
-	storagehelpers "k8s.io/component-helpers/storage/volume"
 	"k8s.io/klog/v2"
+	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
-	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/names"
 )
 
 // VolumeZone is a plugin that checks volume zone.
@@ -42,11 +41,10 @@ type VolumeZone struct {
 }
 
 var _ framework.FilterPlugin = &VolumeZone{}
-var _ framework.EnqueueExtensions = &VolumeZone{}
 
 const (
 	// Name is the name of the plugin used in the plugin registry and configurations.
-	Name = names.VolumeZone
+	Name = "VolumeZone"
 
 	// ErrReasonConflict is used for NoVolumeZoneConflict predicate error.
 	ErrReasonConflict = "node(s) had no available volume zone"
@@ -120,7 +118,7 @@ func (pl *VolumeZone) Filter(ctx context.Context, _ *framework.CycleState, pod *
 
 		pvName := pvc.Spec.VolumeName
 		if pvName == "" {
-			scName := storagehelpers.GetPersistentVolumeClaimClass(pvc)
+			scName := v1helper.GetPersistentVolumeClaimClass(pvc)
 			if len(scName) == 0 {
 				return framework.NewStatus(framework.UnschedulableAndUnresolvable, "PersistentVolumeClaim had no pv name and storageClass name")
 			}
@@ -149,15 +147,15 @@ func (pl *VolumeZone) Filter(ctx context.Context, _ *framework.CycleState, pod *
 			if !volumeZoneLabels.Has(k) {
 				continue
 			}
-			nodeV := nodeConstraints[k]
+			nodeV, _ := nodeConstraints[k]
 			volumeVSet, err := volumehelpers.LabelZonesToSet(v)
 			if err != nil {
-				klog.InfoS("Failed to parse label, ignoring the label", "label", fmt.Sprintf("%s:%s", k, v), "err", err)
+				klog.Warningf("Failed to parse label for %q: %q. Ignoring the label. err=%v. ", k, v, err)
 				continue
 			}
 
 			if !volumeVSet.Has(nodeV) {
-				klog.V(10).InfoS("Won't schedule pod onto node due to volume (mismatch on label key)", "pod", klog.KObj(pod), "node", klog.KObj(node), "PV", klog.KRef("", pvName), "PVLabelKey", k)
+				klog.V(10).Infof("Won't schedule pod %q onto node %q due to volume %q (mismatch on %q)", pod.Name, node.Name, pvName, k)
 				return framework.NewStatus(framework.UnschedulableAndUnresolvable, ErrReasonConflict)
 			}
 		}
@@ -173,23 +171,6 @@ func getErrorAsStatus(err error) *framework.Status {
 		return framework.AsStatus(err)
 	}
 	return nil
-}
-
-// EventsToRegister returns the possible events that may make a Pod
-// failed by this plugin schedulable.
-func (pl *VolumeZone) EventsToRegister() []framework.ClusterEvent {
-	return []framework.ClusterEvent{
-		// New storageClass with bind mode `VolumeBindingWaitForFirstConsumer` will make a pod schedulable.
-		// Due to immutable field `storageClass.volumeBindingMode`, storageClass update events are ignored.
-		{Resource: framework.StorageClass, ActionType: framework.Add},
-		// A new node or updating a node's volume zone labels may make a pod schedulable.
-		{Resource: framework.Node, ActionType: framework.Add | framework.UpdateNodeLabel},
-		// A new pvc may make a pod schedulable.
-		// Due to fields are immutable except `spec.resources`, pvc update events are ignored.
-		{Resource: framework.PersistentVolumeClaim, ActionType: framework.Add},
-		// A new pv or updating a pv's volume zone labels may make a pod shedulable.
-		{Resource: framework.PersistentVolume, ActionType: framework.Add | framework.Update},
-	}
 }
 
 // New initializes a new plugin and returns it.

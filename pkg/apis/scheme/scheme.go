@@ -22,6 +22,8 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	kubeschedulerscheme "k8s.io/kubernetes/pkg/scheduler/apis/config/scheme"
 
+	"github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig"
+	configv1beta1 "github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig/v1beta1"
 	schedv1alpha1 "github.com/kube-arbiter/arbiter/pkg/apis/v1alpha1"
 )
 
@@ -40,4 +42,6 @@ func init() {
 // AddToScheme builds the kubescheduler scheme using all known versions of the kubescheduler api.
 func AddToScheme(scheme *runtime.Scheme) {
 	utilruntime.Must(schedv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(schedulerconfig.AddToScheme(scheme))
+	utilruntime.Must(configv1beta1.AddToScheme(scheme))
 }

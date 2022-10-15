@@ -272,7 +272,7 @@ func (mgr *Manager) ObservabilityIndicantAdd(obj interface{}) {
 						"unit": "C"
 					}
 				]
-		    }
+			}
 		}
 	*/
 	var metricData MetricData

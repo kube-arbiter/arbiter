@@ -1,4 +1,3 @@
-//go:build windows
 // +build windows
 
 /*
@@ -217,7 +216,7 @@ func removeSMBMapping(remotepath string) (string, error) {
 
 // Unmount unmounts the target.
 func (mounter *Mounter) Unmount(target string) error {
-	klog.V(4).Infof("Unmount target (%q)", target)
+	klog.V(4).Infof("azureMount: Unmount target (%q)", target)
 	target = NormalizeWindowsPath(target)
 	if output, err := exec.Command("cmd", "/c", "rmdir", target).CombinedOutput(); err != nil {
 		klog.Errorf("rmdir failed: %v, output: %q", err, string(output))
@@ -274,7 +273,7 @@ func (mounter *SafeFormatAndMount) formatAndMountSensitive(source string, target
 	}
 
 	// format disk if it is unformatted(raw)
-	cmd := fmt.Sprintf("Get-Disk -Number %s | Where partitionstyle -eq 'raw' | Initialize-Disk -PartitionStyle GPT -PassThru"+
+	cmd := fmt.Sprintf("Get-Disk -Number %s | Where partitionstyle -eq 'raw' | Initialize-Disk -PartitionStyle MBR -PassThru"+
 		" | New-Partition -UseMaximumSize | Format-Volume -FileSystem %s -Confirm:$false", source, fstype)
 	if output, err := mounter.Exec.Command("powershell", "/c", cmd).CombinedOutput(); err != nil {
 		return fmt.Errorf("diskMount: format disk failed, error: %v, output: %q", err, string(output))

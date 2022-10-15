@@ -1,3 +1,5 @@
+// +build selinux,linux
+
 package selinux
 
 import (
@@ -16,9 +18,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bits-and-blooms/bitset"
 	"github.com/opencontainers/selinux/pkg/pwalk"
 	"github.com/pkg/errors"
+	"github.com/willf/bitset"
 	"golang.org/x/sys/unix"
 )
 
@@ -26,16 +28,12 @@ const (
 	minSensLen       = 2
 	contextFile      = "/usr/share/containers/selinux/contexts"
 	selinuxDir       = "/etc/selinux/"
-	selinuxUsersDir  = "contexts/users"
-	defaultContexts  = "contexts/default_contexts"
 	selinuxConfig    = selinuxDir + "config"
 	selinuxfsMount   = "/sys/fs/selinux"
 	selinuxTypeTag   = "SELINUXTYPE"
 	selinuxTag       = "SELINUX"
 	xattrNameSelinux = "security.selinux"
 )
-
-var policyRoot = filepath.Join(selinuxDir, readConfig(selinuxTypeTag))
 
 type selinuxState struct {
 	enabledSet    bool
@@ -54,13 +52,6 @@ type level struct {
 type mlsRange struct {
 	low  *level
 	high *level
-}
-
-type defaultSECtx struct {
-	user, level, scon   string
-	userRdr, defaultRdr io.Reader
-
-	verifier func(string) error
 }
 
 type levelItem byte
@@ -120,7 +111,7 @@ func verifySELinuxfsMount(mnt string) bool {
 		if err == nil {
 			break
 		}
-		if err == unix.EAGAIN || err == unix.EINTR {
+		if err == unix.EAGAIN {
 			continue
 		}
 		return false
@@ -214,16 +205,28 @@ func getEnabled() bool {
 }
 
 func readConfig(target string) string {
+	var (
+		val, key string
+		bufin    *bufio.Reader
+	)
+
 	in, err := os.Open(selinuxConfig)
 	if err != nil {
 		return ""
 	}
 	defer in.Close()
 
-	scanner := bufio.NewScanner(in)
+	bufin = bufio.NewReader(in)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for done := false; !done; {
+		var line string
+		if line, err = bufin.ReadString('\n'); err != nil {
+			if err != io.EOF {
+				return ""
+			}
+			done = true
+		}
+		line = strings.TrimSpace(line)
 		if len(line) == 0 {
 			// Skip blank lines
 			continue
@@ -233,7 +236,7 @@ func readConfig(target string) string {
 			continue
 		}
 		if groups := assignRegex.FindStringSubmatch(line); groups != nil {
-			key, val := strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
+			key, val = strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
 			if key == target {
 				return strings.Trim(val, "\"")
 			}
@@ -242,17 +245,15 @@ func readConfig(target string) string {
 	return ""
 }
 
+func getSELinuxPolicyRoot() string {
+	return filepath.Join(selinuxDir, readConfig(selinuxTypeTag))
+}
+
 func isProcHandle(fh *os.File) error {
 	var buf unix.Statfs_t
-
-	for {
-		err := unix.Fstatfs(int(fh.Fd()), &buf)
-		if err == nil {
-			break
-		}
-		if err != unix.EINTR {
-			return errors.Wrapf(err, "statfs(%q) failed", fh.Name())
-		}
+	err := unix.Fstatfs(int(fh.Fd()), &buf)
+	if err != nil {
+		return errors.Wrapf(err, "statfs(%q) failed", fh.Name())
 	}
 	if buf.Type != unix.PROC_SUPER_MAGIC {
 		return errors.Errorf("file %q is not on procfs", fh.Name())
@@ -306,16 +307,9 @@ func setFileLabel(fpath string, label string) error {
 	if fpath == "" {
 		return ErrEmptyPath
 	}
-	for {
-		err := unix.Lsetxattr(fpath, xattrNameSelinux, []byte(label), 0)
-		if err == nil {
-			break
-		}
-		if err != unix.EINTR {
-			return errors.Wrapf(err, "failed to set file label on %s", fpath)
-		}
+	if err := unix.Lsetxattr(fpath, xattrNameSelinux, []byte(label), 0); err != nil {
+		return errors.Wrapf(err, "failed to set file label on %s", fpath)
 	}
-
 	return nil
 }
 
@@ -757,7 +751,7 @@ func reserveLabel(label string) {
 	if len(label) != 0 {
 		con := strings.SplitN(label, ":", 4)
 		if len(con) > 3 {
-			_ = mcsAdd(con[3])
+			mcsAdd(con[3])
 		}
 	}
 }
@@ -834,11 +828,11 @@ func intToMcs(id int, catRange uint32) string {
 	}
 
 	for ORD > TIER {
-		ORD -= TIER
+		ORD = ORD - TIER
 		TIER--
 	}
 	TIER = SETSIZE - TIER
-	ORD += TIER
+	ORD = ORD + TIER
 	return fmt.Sprintf("s0:c%d,c%d", TIER, ORD)
 }
 
@@ -850,14 +844,16 @@ func uniqMcs(catRange uint32) string {
 	)
 
 	for {
-		_ = binary.Read(rand.Reader, binary.LittleEndian, &n)
+		binary.Read(rand.Reader, binary.LittleEndian, &n)
 		c1 = n % catRange
-		_ = binary.Read(rand.Reader, binary.LittleEndian, &n)
+		binary.Read(rand.Reader, binary.LittleEndian, &n)
 		c2 = n % catRange
 		if c1 == c2 {
 			continue
-		} else if c1 > c2 {
-			c1, c2 = c2, c1
+		} else {
+			if c1 > c2 {
+				c1, c2 = c2, c1
+			}
 		}
 		mcs = fmt.Sprintf("s0:c%d,c%d", c1, c2)
 		if err := mcsAdd(mcs); err != nil {
@@ -888,24 +884,37 @@ func openContextFile() (*os.File, error) {
 	if f, err := os.Open(contextFile); err == nil {
 		return f, nil
 	}
-	lxcPath := filepath.Join(policyRoot, "/contexts/lxc_contexts")
+	lxcPath := filepath.Join(getSELinuxPolicyRoot(), "/contexts/lxc_contexts")
 	return os.Open(lxcPath)
 }
 
-var labels, privContainerMountLabel = loadLabels()
+var labels = loadLabels()
 
-func loadLabels() (map[string]string, string) {
+func loadLabels() map[string]string {
+	var (
+		val, key string
+		bufin    *bufio.Reader
+	)
+
 	labels := make(map[string]string)
 	in, err := openContextFile()
 	if err != nil {
-		return labels, ""
+		return labels
 	}
 	defer in.Close()
 
-	scanner := bufio.NewScanner(in)
+	bufin = bufio.NewReader(in)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	for done := false; !done; {
+		var line string
+		if line, err = bufin.ReadString('\n'); err != nil {
+			if err == io.EOF {
+				done = true
+			} else {
+				break
+			}
+		}
+		line = strings.TrimSpace(line)
 		if len(line) == 0 {
 			// Skip blank lines
 			continue
@@ -915,15 +924,12 @@ func loadLabels() (map[string]string, string) {
 			continue
 		}
 		if groups := assignRegex.FindStringSubmatch(line); groups != nil {
-			key, val := strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
+			key, val = strings.TrimSpace(groups[1]), strings.TrimSpace(groups[2])
 			labels[key] = strings.Trim(val, "\"")
 		}
 	}
 
-	con, _ := NewContext(labels["file"])
-	con["level"] = fmt.Sprintf("s0:c%d,c%d", maxCategory-2, maxCategory-1)
-	reserveLabel(con.get())
-	return labels, con.get()
+	return labels
 }
 
 // kvmContainerLabels returns the default processLabel and mountLabel to be used
@@ -1009,7 +1015,7 @@ func copyLevel(src, dest string) (string, error) {
 		return "", err
 	}
 	mcsDelete(tcon["level"])
-	_ = mcsAdd(scon["level"])
+	mcsAdd(scon["level"])
 	tcon["level"] = scon["level"]
 	return tcon.Get(), nil
 }
@@ -1088,125 +1094,4 @@ func dupSecOpt(src string) ([]string, error) {
 // labeling support for future container processes.
 func disableSecOpt() []string {
 	return []string{"disable"}
-}
-
-// findUserInContext scans the reader for a valid SELinux context
-// match that is verified with the verifier. Invalid contexts are
-// skipped. It returns a matched context or an empty string if no
-// match is found. If a scanner error occurs, it is returned.
-func findUserInContext(context Context, r io.Reader, verifier func(string) error) (string, error) {
-	fromRole := context["role"]
-	fromType := context["type"]
-	scanner := bufio.NewScanner(r)
-
-	for scanner.Scan() {
-		fromConns := strings.Fields(scanner.Text())
-		if len(fromConns) == 0 {
-			// Skip blank lines
-			continue
-		}
-
-		line := fromConns[0]
-
-		if line[0] == ';' || line[0] == '#' {
-			// Skip comments
-			continue
-		}
-
-		// user context files contexts are formatted as
-		// role_r:type_t:s0 where the user is missing.
-		lineArr := strings.SplitN(line, ":", 4)
-		// skip context with typo, or role and type do not match
-		if len(lineArr) != 3 ||
-			lineArr[0] != fromRole ||
-			lineArr[1] != fromType {
-			continue
-		}
-
-		for _, cc := range fromConns[1:] {
-			toConns := strings.SplitN(cc, ":", 4)
-			if len(toConns) != 3 {
-				continue
-			}
-
-			context["role"] = toConns[0]
-			context["type"] = toConns[1]
-
-			outConn := context.get()
-			if err := verifier(outConn); err != nil {
-				continue
-			}
-
-			return outConn, nil
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", errors.Wrap(err, "failed to scan for context")
-	}
-
-	return "", nil
-}
-
-func getDefaultContextFromReaders(c *defaultSECtx) (string, error) {
-	if c.verifier == nil {
-		return "", ErrVerifierNil
-	}
-
-	context, err := newContext(c.scon)
-	if err != nil {
-		return "", errors.Wrapf(err, "failed to create label for %s", c.scon)
-	}
-
-	// set so the verifier validates the matched context with the provided user and level.
-	context["user"] = c.user
-	context["level"] = c.level
-
-	conn, err := findUserInContext(context, c.userRdr, c.verifier)
-	if err != nil {
-		return "", err
-	}
-
-	if conn != "" {
-		return conn, nil
-	}
-
-	conn, err = findUserInContext(context, c.defaultRdr, c.verifier)
-	if err != nil {
-		return "", err
-	}
-
-	if conn != "" {
-		return conn, nil
-	}
-
-	return "", errors.Wrapf(ErrContextMissing, "context not found: %q", c.scon)
-}
-
-func getDefaultContextWithLevel(user, level, scon string) (string, error) {
-	userPath := filepath.Join(policyRoot, selinuxUsersDir, user)
-	defaultPath := filepath.Join(policyRoot, defaultContexts)
-
-	fu, err := os.Open(userPath)
-	if err != nil {
-		return "", err
-	}
-	defer fu.Close()
-
-	fd, err := os.Open(defaultPath)
-	if err != nil {
-		return "", err
-	}
-	defer fd.Close()
-
-	c := defaultSECtx{
-		user:       user,
-		level:      level,
-		scon:       scon,
-		userRdr:    fu,
-		defaultRdr: fd,
-		verifier:   securityCheckContext,
-	}
-
-	return getDefaultContextFromReaders(&c)
 }

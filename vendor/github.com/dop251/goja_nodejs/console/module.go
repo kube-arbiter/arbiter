@@ -5,10 +5,8 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
-	"github.com/dop251/goja_nodejs/util"
+	_ "github.com/dop251/goja_nodejs/util"
 )
-
-const ModuleName = "node:console"
 
 type Console struct {
 	runtime *goja.Runtime
@@ -64,7 +62,7 @@ func requireWithPrinter(printer Printer) require.ModuleLoader {
 			printer: printer,
 		}
 
-		c.util = require.Require(runtime, util.ModuleName).(*goja.Object)
+		c.util = require.Require(runtime, "util").(*goja.Object)
 
 		o := module.Get("exports").(*goja.Object)
 		o.Set("log", c.log(c.printer.Log))
@@ -74,9 +72,9 @@ func requireWithPrinter(printer Printer) require.ModuleLoader {
 }
 
 func Enable(runtime *goja.Runtime) {
-	runtime.Set("console", require.Require(runtime, ModuleName))
+	runtime.Set("console", require.Require(runtime, "console"))
 }
 
 func init() {
-	require.RegisterNativeModule(ModuleName, Require)
+	require.RegisterNativeModule("console", Require)
 }

@@ -33,7 +33,7 @@ version::ldflags() {
 	fi
 
 	if [[ -n ${GIT_VERSION-} ]]; then
-		add_ld_flag "gitVersion" "${GIT_VERSION}"
+		add_ld_flag "gitVersion" ${GIT_VERSION#pre-}
 	fi
 
 	if [[ -n ${GIT_MAJOR-} && -n ${GIT_MINOR-} ]]; then
@@ -45,5 +45,5 @@ version::ldflags() {
 }
 
 version::git_version() {
-	GIT_VERSION=$(git describe --tags --dirty --match "v*" --abbrev=14 2>/dev/null || echo "v0.0.0")
+	GIT_VERSION=$(git describe --tags --dirty --match "pre-v*" --abbrev=14 2>/dev/null || echo "pre-v0.0.0")
 }

@@ -35,7 +35,6 @@ import (
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	"k8s.io/apiserver/pkg/storage/storagebackend"
 	storagefactory "k8s.io/apiserver/pkg/storage/storagebackend/factory"
-	"k8s.io/apiserver/pkg/storage/value"
 	"k8s.io/klog/v2"
 )
 
@@ -118,8 +117,7 @@ func (s *EtcdOptions) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringSliceVar(&s.EtcdServersOverrides, "etcd-servers-overrides", s.EtcdServersOverrides, ""+
 		"Per-resource etcd servers overrides, comma separated. The individual override "+
-		"format: group/resource#servers, where servers are URLs, semicolon separated. "+
-		"Note that this applies only to resources compiled into this server binary. ")
+		"format: group/resource#servers, where servers are URLs, semicolon separated.")
 
 	fs.StringVar(&s.DefaultStorageMediaType, "storage-media-type", s.DefaultStorageMediaType, ""+
 		"The media type to use to store objects in storage. "+
@@ -197,22 +195,7 @@ func (s *EtcdOptions) ApplyTo(c *server.Config) error {
 	if err := s.addEtcdHealthEndpoint(c); err != nil {
 		return err
 	}
-	transformerOverrides := make(map[schema.GroupResource]value.Transformer)
-	if len(s.EncryptionProviderConfigFilepath) > 0 {
-		var err error
-		transformerOverrides, err = encryptionconfig.GetTransformerOverrides(s.EncryptionProviderConfigFilepath)
-		if err != nil {
-			return err
-		}
-	}
-
-	// use the StorageObjectCountTracker interface instance from server.Config
-	s.StorageConfig.StorageObjectCountTracker = c.StorageObjectCountTracker
-
-	c.RESTOptionsGetter = &SimpleRestOptionsFactory{
-		Options:              *s,
-		TransformerOverrides: transformerOverrides,
-	}
+	c.RESTOptionsGetter = &SimpleRestOptionsFactory{Options: *s}
 	return nil
 }
 
@@ -220,10 +203,6 @@ func (s *EtcdOptions) ApplyWithStorageFactoryTo(factory serverstorage.StorageFac
 	if err := s.addEtcdHealthEndpoint(c); err != nil {
 		return err
 	}
-
-	// use the StorageObjectCountTracker interface instance from server.Config
-	s.StorageConfig.StorageObjectCountTracker = c.StorageObjectCountTracker
-
 	c.RESTOptionsGetter = &StorageFactoryRestOptionsFactory{Options: *s, StorageFactory: factory}
 	return nil
 }
@@ -249,24 +228,17 @@ func (s *EtcdOptions) addEtcdHealthEndpoint(c *server.Config) error {
 }
 
 type SimpleRestOptionsFactory struct {
-	Options              EtcdOptions
-	TransformerOverrides map[schema.GroupResource]value.Transformer
+	Options EtcdOptions
 }
 
 func (f *SimpleRestOptionsFactory) GetRESTOptions(resource schema.GroupResource) (generic.RESTOptions, error) {
 	ret := generic.RESTOptions{
-		StorageConfig:             f.Options.StorageConfig.ForResource(resource),
-		Decorator:                 generic.UndecoratedStorage,
-		EnableGarbageCollection:   f.Options.EnableGarbageCollection,
-		DeleteCollectionWorkers:   f.Options.DeleteCollectionWorkers,
-		ResourcePrefix:            resource.Group + "/" + resource.Resource,
-		CountMetricPollPeriod:     f.Options.StorageConfig.CountMetricPollPeriod,
-		StorageObjectCountTracker: f.Options.StorageConfig.StorageObjectCountTracker,
-	}
-	if f.TransformerOverrides != nil {
-		if transformer, ok := f.TransformerOverrides[resource]; ok {
-			ret.StorageConfig.Transformer = transformer
-		}
+		StorageConfig:           &f.Options.StorageConfig,
+		Decorator:               generic.UndecoratedStorage,
+		EnableGarbageCollection: f.Options.EnableGarbageCollection,
+		DeleteCollectionWorkers: f.Options.DeleteCollectionWorkers,
+		ResourcePrefix:          resource.Group + "/" + resource.Resource,
+		CountMetricPollPeriod:   f.Options.StorageConfig.CountMetricPollPeriod,
 	}
 	if f.Options.EnableWatchCache {
 		sizes, err := ParseWatchCacheSizes(f.Options.WatchCacheSizes)
@@ -298,13 +270,12 @@ func (f *StorageFactoryRestOptionsFactory) GetRESTOptions(resource schema.GroupR
 	}
 
 	ret := generic.RESTOptions{
-		StorageConfig:             storageConfig,
-		Decorator:                 generic.UndecoratedStorage,
-		DeleteCollectionWorkers:   f.Options.DeleteCollectionWorkers,
-		EnableGarbageCollection:   f.Options.EnableGarbageCollection,
-		ResourcePrefix:            f.StorageFactory.ResourcePrefix(resource),
-		CountMetricPollPeriod:     f.Options.StorageConfig.CountMetricPollPeriod,
-		StorageObjectCountTracker: f.Options.StorageConfig.StorageObjectCountTracker,
+		StorageConfig:           storageConfig,
+		Decorator:               generic.UndecoratedStorage,
+		DeleteCollectionWorkers: f.Options.DeleteCollectionWorkers,
+		EnableGarbageCollection: f.Options.EnableGarbageCollection,
+		ResourcePrefix:          f.StorageFactory.ResourcePrefix(resource),
+		CountMetricPollPeriod:   f.Options.StorageConfig.CountMetricPollPeriod,
 	}
 	if f.Options.EnableWatchCache {
 		sizes, err := ParseWatchCacheSizes(f.Options.WatchCacheSizes)

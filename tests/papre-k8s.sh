@@ -96,80 +96,15 @@ function check_control_plane_ready {
 }
 
 function change_default_scheduler_config {
-	docker exec arbiter-e2e-control-plane /bin/bash -c "cp /etc/kubernetes/kube-scheduler-new.yaml /etc/kubernetes/manifests/kube-scheduler.yaml"
+	docker exec arbiter-e2e-control-plane /bin/bash -c "cat /etc/kubernetes/kube-scheduler-new.yaml | sed -e 's/kubearbiter\/scheduler:.*/localhost:5001\/arbiter.k8s.com.cn\/scheduler:latest/g' > /etc/kubernetes/manifests/kube-scheduler.yaml"
+	#docker exec arbiter-e2e-control-plane /bin/bash -c "cp /etc/kubernetes/kube-scheduler-new.yaml /etc/kubernetes/manifests/kube-scheduler.yaml"
 	kubectl wait --timeout=${TIMEOUT} --for=condition=Ready -n kube-system pod/kube-scheduler-arbiter-e2e-control-plane
 }
 
 function remove_config_to_tmp {
 	# resolve mac or win docker limitation
-	cat >/tmp/kube-scheduler-new.yaml <<EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  labels:
-    component: kube-scheduler
-    tier: control-plane
-  name: kube-scheduler
-  namespace: kube-system
-spec:
-  containers:
-    - command:
-        - kube-scheduler
-        - --authentication-kubeconfig=/etc/kubernetes/scheduler.conf
-        - --authorization-kubeconfig=/etc/kubernetes/scheduler.conf
-        - --bind-address=127.0.0.1
-        - --kubeconfig=/etc/kubernetes/scheduler.conf
-        - --config=/etc/kubernetes/kube-scheduler-arbiter-config.yaml
-        - --v=4
-      image: localhost:5001/arbiter.k8s.com.cn/scheduler:latest
-      imagePullPolicy: IfNotPresent
-      livenessProbe:
-        failureThreshold: 8
-        httpGet:
-          host: 127.0.0.1
-          path: /healthz
-          port: 10259
-          scheme: HTTPS
-        initialDelaySeconds: 10
-        periodSeconds: 10
-        timeoutSeconds: 15
-      name: kube-scheduler
-      resources:
-        requests:
-          cpu: 100m
-      startupProbe:
-        failureThreshold: 24
-        httpGet:
-          host: 127.0.0.1
-          path: /healthz
-          port: 10259
-          scheme: HTTPS
-        initialDelaySeconds: 10
-        periodSeconds: 10
-        timeoutSeconds: 15
-      volumeMounts:
-        - mountPath: /etc/kubernetes/scheduler.conf
-          name: kubeconfig
-          readOnly: true
-        - mountPath: /etc/kubernetes/kube-scheduler-arbiter-config.yaml
-          name: config
-          readOnly: true
-  hostNetwork: true
-  priorityClassName: system-node-critical
-  securityContext:
-    seccompProfile:
-      type: RuntimeDefault
-  volumes:
-    - hostPath:
-        path: /etc/kubernetes/scheduler.conf
-        type: FileOrCreate
-      name: kubeconfig
-    - hostPath:
-        path: /etc/kubernetes/kube-scheduler-arbiter-config.yaml
-        type: FileOrCreate
-      name: config
-EOF
-	cp $ROOT/manifests/install/scheduler/kube-scheduler-arbiter-config.yaml /tmp
+	cp $ROOT/manifests/install/scheduler/kube-scheduler-configuration.yaml /tmp
+	cp $ROOT/manifests/install/scheduler/kube-scheduler-new.yaml /tmp
 }
 
 function install_scheduler_crd {

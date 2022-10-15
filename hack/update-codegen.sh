@@ -13,19 +13,45 @@ cd "${ROOT_PATH}"
 echo "codegen start."
 echo "tools install..."
 
-GO111MODULE=on go install k8s.io/code-generator/cmd/deepcopy-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/register-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/client-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/lister-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/informer-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/conversion-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/defaulter-gen@v0.24.2
+GO111MODULE=on go install k8s.io/code-generator/cmd/deepcopy-gen@v0.20.15
+GO111MODULE=on go install k8s.io/code-generator/cmd/register-gen@v0.20.15
+GO111MODULE=on go install k8s.io/code-generator/cmd/client-gen@v0.20.15
+GO111MODULE=on go install k8s.io/code-generator/cmd/lister-gen@v0.20.15
+GO111MODULE=on go install k8s.io/code-generator/cmd/informer-gen@v0.20.15
+GO111MODULE=on go install k8s.io/code-generator/cmd/conversion-gen@v0.20.15
+GO111MODULE=on go install k8s.io/code-generator/cmd/defaulter-gen@v0.20.15
+
+echo "Generating with conversion-gen..."
+conversion-gen \
+	--go-header-file hack/boilerplate/boilerplate.generatego.txt \
+	--input-dirs=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig/v1beta1 \
+	--output-package=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig/v1beta1 \
+	--output-file-base=zz_generated.conversion
+
+echo "Generating with defaulter-gen..."
+defaulter-gen \
+	--go-header-file hack/boilerplate/boilerplate.generatego.txt \
+	--input-dirs=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig/v1beta1 \
+	--output-package=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig/v1beta1 \
+	--output-file-base=zz_generated.defaulter
 
 echo "Generating with deepcopy-gen..."
 deepcopy-gen \
 	--go-header-file hack/boilerplate/boilerplate.generatego.txt \
 	--input-dirs=github.com/kube-arbiter/arbiter/pkg/apis/v1alpha1 \
 	--output-package=github.com/kube-arbiter/arbiter/pkg/apis/v1alpha1 \
+	--output-file-base=zz_generated.deepcopy
+
+deepcopy-gen \
+	--go-header-file hack/boilerplate/boilerplate.generatego.txt \
+	--input-dirs=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig \
+	--output-package=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig \
+	--output-file-base=zz_generated.deepcopy
+
+deepcopy-gen \
+	--go-header-file hack/boilerplate/boilerplate.generatego.txt \
+	--input-dirs=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig/v1beta1 \
+	--output-package=github.com/kube-arbiter/arbiter/pkg/apis/schedulerconfig/v1beta1 \
 	--output-file-base=zz_generated.deepcopy
 
 echo "Generating with register-gen..."

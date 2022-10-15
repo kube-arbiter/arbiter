@@ -100,7 +100,7 @@ func newWaitingPod(pod *v1.Pod, pluginsMaxWaitTime map[string]time.Duration) *wa
 		wp.pendingPlugins[plugin] = time.AfterFunc(waitTime, func() {
 			msg := fmt.Sprintf("rejected due to timeout after waiting %v at plugin %v",
 				waitTime, plugin)
-			wp.Reject(plugin, msg)
+			wp.Reject(msg)
 		})
 	}
 
@@ -149,7 +149,7 @@ func (w *waitingPod) Allow(pluginName string) {
 }
 
 // Reject declares the waiting pod unschedulable.
-func (w *waitingPod) Reject(pluginName, msg string) {
+func (w *waitingPod) Reject(msg string) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	for _, timer := range w.pendingPlugins {
@@ -159,7 +159,7 @@ func (w *waitingPod) Reject(pluginName, msg string) {
 	// The select clause works as a non-blocking send.
 	// If there is no receiver, it's a no-op (default case).
 	select {
-	case w.s <- framework.NewStatus(framework.Unschedulable, msg).WithFailedPlugin(pluginName):
+	case w.s <- framework.NewStatus(framework.Unschedulable, msg):
 	default:
 	}
 }

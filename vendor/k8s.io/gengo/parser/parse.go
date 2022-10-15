@@ -493,19 +493,6 @@ func (b *Builder) FindTypes() (types.Universe, error) {
 	return u, nil
 }
 
-// addCommentsToType takes any accumulated comment lines prior to obj and
-// attaches them to the type t.
-func (b *Builder) addCommentsToType(obj tc.Object, t *types.Type) {
-	c1 := b.priorCommentLines(obj.Pos(), 1)
-	// c1.Text() is safe if c1 is nil
-	t.CommentLines = splitLines(c1.Text())
-	if c1 == nil {
-		t.SecondClosestCommentLines = splitLines(b.priorCommentLines(obj.Pos(), 2).Text())
-	} else {
-		t.SecondClosestCommentLines = splitLines(b.priorCommentLines(c1.List[0].Slash, 2).Text())
-	}
-}
-
 // findTypesIn finalizes the package import and searches through the package
 // for types.
 func (b *Builder) findTypesIn(pkgPath importPathString, u *types.Universe) error {
@@ -549,23 +536,35 @@ func (b *Builder) findTypesIn(pkgPath importPathString, u *types.Universe) error
 		tn, ok := obj.(*tc.TypeName)
 		if ok {
 			t := b.walkType(*u, nil, tn.Type())
-			b.addCommentsToType(obj, t)
+			c1 := b.priorCommentLines(obj.Pos(), 1)
+			// c1.Text() is safe if c1 is nil
+			t.CommentLines = splitLines(c1.Text())
+			if c1 == nil {
+				t.SecondClosestCommentLines = splitLines(b.priorCommentLines(obj.Pos(), 2).Text())
+			} else {
+				t.SecondClosestCommentLines = splitLines(b.priorCommentLines(c1.List[0].Slash, 2).Text())
+			}
 		}
 		tf, ok := obj.(*tc.Func)
 		// We only care about functions, not concrete/abstract methods.
 		if ok && tf.Type() != nil && tf.Type().(*tc.Signature).Recv() == nil {
 			t := b.addFunction(*u, nil, tf)
-			b.addCommentsToType(obj, t)
+			c1 := b.priorCommentLines(obj.Pos(), 1)
+			// c1.Text() is safe if c1 is nil
+			t.CommentLines = splitLines(c1.Text())
+			if c1 == nil {
+				t.SecondClosestCommentLines = splitLines(b.priorCommentLines(obj.Pos(), 2).Text())
+			} else {
+				t.SecondClosestCommentLines = splitLines(b.priorCommentLines(c1.List[0].Slash, 2).Text())
+			}
 		}
 		tv, ok := obj.(*tc.Var)
 		if ok && !tv.IsField() {
-			t := b.addVariable(*u, nil, tv)
-			b.addCommentsToType(obj, t)
+			b.addVariable(*u, nil, tv)
 		}
 		tconst, ok := obj.(*tc.Const)
 		if ok {
-			t := b.addConstant(*u, nil, tconst)
-			b.addCommentsToType(obj, t)
+			b.addConstant(*u, nil, tconst)
 		}
 	}
 
@@ -723,7 +722,8 @@ func (b *Builder) walkType(u types.Universe, useName *types.Name, in tc.Type) *t
 		}
 		out.Kind = types.Array
 		out.Elem = b.walkType(u, nil, t.Elem())
-		out.Len = in.(*tc.Array).Len()
+		// TODO: need to store array length, otherwise raw type name
+		// cannot be properly written.
 		return out
 	case *tc.Chan:
 		out := u.Type(name)

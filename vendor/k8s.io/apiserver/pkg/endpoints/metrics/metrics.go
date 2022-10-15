@@ -17,9 +17,11 @@ limitations under the License.
 package metrics
 
 import (
-	"context"
+	"bufio"
+	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,7 +34,6 @@ import (
 	"k8s.io/apiserver/pkg/audit"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	compbasemetrics "k8s.io/component-base/metrics"
@@ -48,12 +49,13 @@ type resettableCollector interface {
 
 const (
 	APIServerComponent string = "apiserver"
+	OtherContentType   string = "other"
 	OtherRequestMethod string = "other"
 )
 
 /*
  * By default, all the following metrics are defined as falling under
- * ALPHA stability level https://github.com/kubernetes/enhancements/blob/master/keps/sig-instrumentation/1209-metrics-stability/kubernetes-control-plane-metrics-stability.md#stability-classes)
+ * ALPHA stability level https://github.com/kubernetes/enhancements/blob/master/keps/sig-instrumentation/20190404-kubernetes-control-plane-metrics-stability.md#stability-classes)
  *
  * Promoting the stability level of the metric is a responsibility of the component owner, since it
  * involves explicitly acknowledging support for the metric across multiple releases, in accordance with
@@ -64,7 +66,7 @@ var (
 		&compbasemetrics.GaugeOpts{
 			Name:           "apiserver_requested_deprecated_apis",
 			Help:           "Gauge of deprecated APIs that have been requested, broken out by API group, version, resource, subresource, and removed_release.",
-			StabilityLevel: compbasemetrics.STABLE,
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"group", "version", "resource", "subresource", "removed_release"},
 	)
@@ -74,25 +76,20 @@ var (
 	requestCounter = compbasemetrics.NewCounterVec(
 		&compbasemetrics.CounterOpts{
 			Name:           "apiserver_request_total",
-			Help:           "Counter of apiserver requests broken out for each verb, dry run value, group, version, resource, scope, component, and HTTP response code.",
-			StabilityLevel: compbasemetrics.STABLE,
-		},
-		[]string{"verb", "dry_run", "group", "version", "resource", "subresource", "scope", "component", "code"},
-	)
-	longRunningRequestsGauge = compbasemetrics.NewGaugeVec(
-		&compbasemetrics.GaugeOpts{
-			Name:           "apiserver_longrunning_requests",
-			Help:           "Gauge of all active long-running apiserver requests broken out by verb, group, version, resource, scope and component. Not all requests are tracked this way.",
+			Help:           "Counter of apiserver requests broken out for each verb, dry run value, group, version, resource, scope, component, and HTTP response contentType and code.",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"verb", "group", "version", "resource", "subresource", "scope", "component"},
+		// The label_name contentType doesn't follow the label_name convention defined here:
+		// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/instrumentation.md
+		// But changing it would break backwards compatibility. Future label_names
+		// should be all lowercase and separated by underscores.
+		[]string{"verb", "dry_run", "group", "version", "resource", "subresource", "scope", "component", "contentType", "code"},
 	)
 	longRunningRequestGauge = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
-			Name:              "apiserver_longrunning_gauge",
-			Help:              "Gauge of all active long-running apiserver requests broken out by verb, group, version, resource, scope and component. Not all requests are tracked this way.",
-			StabilityLevel:    compbasemetrics.ALPHA,
-			DeprecatedVersion: "1.23.0",
+			Name:           "apiserver_longrunning_gauge",
+			Help:           "Gauge of all active long-running apiserver requests broken out by verb, group, version, resource, scope and component. Not all requests are tracked this way.",
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"verb", "group", "version", "resource", "subresource", "scope", "component"},
 	)
@@ -103,24 +100,11 @@ var (
 			// This metric is used for verifying api call latencies SLO,
 			// as well as tracking regressions in this aspects.
 			// Thus we customize buckets significantly, to empower both usecases.
-			Buckets: []float64{0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.25, 1.5, 2, 3,
-				4, 5, 6, 8, 10, 15, 20, 30, 45, 60},
-			StabilityLevel: compbasemetrics.STABLE,
-		},
-		[]string{"verb", "dry_run", "group", "version", "resource", "subresource", "scope", "component"},
-	)
-	requestSloLatencies = compbasemetrics.NewHistogramVec(
-		&compbasemetrics.HistogramOpts{
-			Name: "apiserver_request_slo_duration_seconds",
-			Help: "Response latency distribution (not counting webhook duration) in seconds for each verb, group, version, resource, subresource, scope and component.",
-			// This metric is supplementary to the requestLatencies metric.
-			// It measures request duration excluding webhooks as they are mostly
-			// dependant on user configuration.
-			Buckets: []float64{0.05, 0.1, 0.2, 0.4, 0.6, 0.8, 1.0, 1.25, 1.5, 2, 3,
-				4, 5, 6, 8, 10, 15, 20, 30, 45, 60},
+			Buckets: []float64{0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+				1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50, 60},
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"verb", "group", "version", "resource", "subresource", "scope", "component"},
+		[]string{"verb", "dry_run", "group", "version", "resource", "subresource", "scope", "component"},
 	)
 	responseSizes = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
@@ -128,7 +112,7 @@ var (
 			Help: "Response size distribution in bytes for each group, version, verb, resource, subresource, scope and component.",
 			// Use buckets ranging from 1000 bytes (1KB) to 10^9 bytes (1GB).
 			Buckets:        compbasemetrics.ExponentialBuckets(1000, 10.0, 7),
-			StabilityLevel: compbasemetrics.STABLE,
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"verb", "group", "version", "resource", "subresource", "scope", "component"},
 	)
@@ -152,10 +136,9 @@ var (
 	// RegisteredWatchers is a number of currently registered watchers splitted by resource.
 	RegisteredWatchers = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
-			Name:              "apiserver_registered_watchers",
-			Help:              "Number of currently registered watchers for a given resources",
-			StabilityLevel:    compbasemetrics.ALPHA,
-			DeprecatedVersion: "1.23.0",
+			Name:           "apiserver_registered_watchers",
+			Help:           "Number of currently registered watchers for a given resources",
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"group", "version", "kind"},
 	)
@@ -182,7 +165,7 @@ var (
 		&compbasemetrics.GaugeOpts{
 			Name:           "apiserver_current_inflight_requests",
 			Help:           "Maximal number of currently used inflight request limit of this apiserver per request kind in last second.",
-			StabilityLevel: compbasemetrics.STABLE,
+			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"request_kind"},
 	)
@@ -233,33 +216,13 @@ var (
 		[]string{"verb", "group", "version", "resource", "subresource", "scope"},
 	)
 
-	// requestPostTimeoutTotal tracks the activity of the executing request handler after the associated request
-	// has been timed out by the apiserver.
-	// source: the name of the handler that is recording this metric. Currently, we have two:
-	//  - timeout-handler: the "executing" handler returns after the timeout filter times out the request.
-	//  - rest-handler: the "executing" handler returns after the rest layer times out the request.
-	// status: whether the handler panicked or threw an error, possible values:
-	//  - 'panic': the handler panicked
-	//  - 'error': the handler return an error
-	//  - 'ok': the handler returned a result (no error and no panic)
-	//  - 'pending': the handler is still running in the background and it did not return
-	//    within the wait threshold.
-	requestPostTimeoutTotal = compbasemetrics.NewCounterVec(
-		&compbasemetrics.CounterOpts{
-			Name:           "apiserver_request_post_timeout_total",
-			Help:           "Tracks the activity of the request handlers after the associated requests have been timed out by the apiserver",
-			StabilityLevel: compbasemetrics.ALPHA,
-		},
-		[]string{"source", "status"},
-	)
+	kubectlExeRegexp = regexp.MustCompile(`^.*((?i:kubectl\.exe))`)
 
 	metrics = []resettableCollector{
 		deprecatedRequestGauge,
 		requestCounter,
-		longRunningRequestsGauge,
 		longRunningRequestGauge,
 		requestLatencies,
-		requestSloLatencies,
 		responseSizes,
 		DroppedRequests,
 		TLSHandshakeErrors,
@@ -272,9 +235,21 @@ var (
 		apiSelfRequestCounter,
 		requestFilterDuration,
 		requestAbortsTotal,
-		requestPostTimeoutTotal,
 	}
 
+	// these are the known (e.g. whitelisted/known) content types which we will report for
+	// request metrics. Any other RFC compliant content types will be aggregated under 'unknown'
+	knownMetricContentTypes = utilsets.NewString(
+		"application/apply-patch+yaml",
+		"application/json",
+		"application/json-patch+json",
+		"application/merge-patch+json",
+		"application/strategic-merge-patch+json",
+		"application/vnd.kubernetes.protobuf",
+		"application/vnd.kubernetes.protobuf;stream=watch",
+		"application/yaml",
+		"text/plain",
+		"text/plain;charset=utf-8")
 	// these are the valid request methods which we report in our metrics. Any other request methods
 	// will be aggregated under 'unknown'
 	validRequestMethods = utilsets.NewString(
@@ -316,36 +291,6 @@ const (
 	removedReleaseAnnotationKey = "k8s.io/removed-release"
 )
 
-const (
-	// The source that is recording the apiserver_request_post_timeout_total metric.
-	// The "executing" request handler returns after the timeout filter times out the request.
-	PostTimeoutSourceTimeoutHandler = "timeout-handler"
-
-	// The source that is recording the apiserver_request_post_timeout_total metric.
-	// The "executing" request handler returns after the rest layer times out the request.
-	PostTimeoutSourceRestHandler = "rest-handler"
-)
-
-const (
-	// The executing request handler panicked after the request had
-	// been timed out by the apiserver.
-	PostTimeoutHandlerPanic = "panic"
-
-	// The executing request handler has returned an error to the post-timeout
-	// receiver after the request had been timed out by the apiserver.
-	PostTimeoutHandlerError = "error"
-
-	// The executing request handler has returned a result to the post-timeout
-	// receiver after the request had been timed out by the apiserver.
-	PostTimeoutHandlerOK = "ok"
-
-	// The executing request handler has not panicked or returned any error/result to
-	// the post-timeout receiver yet after the request had been timed out by the apiserver.
-	// The post-timeout receiver gives up after waiting for certain threshold and if the
-	// executing request handler has not returned yet we use the following label.
-	PostTimeoutHandlerPending = "pending"
-)
-
 var registerMetrics sync.Once
 
 // Register all metrics.
@@ -379,12 +324,8 @@ func UpdateInflightRequestMetrics(phase string, nonmutating, mutating int) {
 	}
 }
 
-func RecordFilterLatency(ctx context.Context, name string, elapsed time.Duration) {
-	requestFilterDuration.WithContext(ctx).WithLabelValues(name).Observe(elapsed.Seconds())
-}
-
-func RecordRequestPostTimeout(source string, status string) {
-	requestPostTimeoutTotal.WithLabelValues(source, status).Inc()
+func RecordFilterLatency(name string, elapsed time.Duration) {
+	requestFilterDuration.WithLabelValues(name).Observe(elapsed.Seconds())
 }
 
 // RecordRequestAbort records that the request was aborted possibly due to a timeout.
@@ -394,13 +335,13 @@ func RecordRequestAbort(req *http.Request, requestInfo *request.RequestInfo) {
 	}
 
 	scope := CleanScope(requestInfo)
-	reportedVerb := cleanVerb(CanonicalVerb(strings.ToUpper(req.Method), scope), getVerbIfWatch(req), req)
+	reportedVerb := cleanVerb(canonicalVerb(strings.ToUpper(req.Method), scope), "", req)
 	resource := requestInfo.Resource
 	subresource := requestInfo.Subresource
 	group := requestInfo.APIGroup
 	version := requestInfo.APIVersion
 
-	requestAbortsTotal.WithContext(req.Context()).WithLabelValues(reportedVerb, group, version, resource, subresource, scope).Inc()
+	requestAbortsTotal.WithLabelValues(reportedVerb, group, version, resource, subresource, scope).Inc()
 }
 
 // RecordRequestTermination records that the request was terminated early as part of a resource
@@ -417,12 +358,12 @@ func RecordRequestTermination(req *http.Request, requestInfo *request.RequestInf
 	// InstrumentRouteFunc which is registered in installer.go with predefined
 	// list of verbs (different than those translated to RequestInfo).
 	// However, we need to tweak it e.g. to differentiate GET from LIST.
-	reportedVerb := cleanVerb(CanonicalVerb(strings.ToUpper(req.Method), scope), getVerbIfWatch(req), req)
+	reportedVerb := cleanVerb(canonicalVerb(strings.ToUpper(req.Method), scope), "", req)
 
 	if requestInfo.IsResourceRequest {
-		requestTerminationsTotal.WithContext(req.Context()).WithLabelValues(reportedVerb, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Subresource, scope, component, codeToString(code)).Inc()
+		requestTerminationsTotal.WithLabelValues(reportedVerb, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Subresource, scope, component, codeToString(code)).Inc()
 	} else {
-		requestTerminationsTotal.WithContext(req.Context()).WithLabelValues(reportedVerb, "", "", "", requestInfo.Path, scope, component, codeToString(code)).Inc()
+		requestTerminationsTotal.WithLabelValues(reportedVerb, "", "", "", requestInfo.Path, scope, component, codeToString(code)).Inc()
 	}
 }
 
@@ -432,63 +373,54 @@ func RecordLongRunning(req *http.Request, requestInfo *request.RequestInfo, comp
 	if requestInfo == nil {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
 	}
-	var g, e compbasemetrics.GaugeMetric
+	var g compbasemetrics.GaugeMetric
 	scope := CleanScope(requestInfo)
 
 	// We don't use verb from <requestInfo>, as this may be propagated from
 	// InstrumentRouteFunc which is registered in installer.go with predefined
 	// list of verbs (different than those translated to RequestInfo).
 	// However, we need to tweak it e.g. to differentiate GET from LIST.
-	reportedVerb := cleanVerb(CanonicalVerb(strings.ToUpper(req.Method), scope), getVerbIfWatch(req), req)
+	reportedVerb := cleanVerb(canonicalVerb(strings.ToUpper(req.Method), scope), "", req)
 
 	if requestInfo.IsResourceRequest {
-		e = longRunningRequestsGauge.WithContext(req.Context()).WithLabelValues(reportedVerb, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Subresource, scope, component)
-		g = longRunningRequestGauge.WithContext(req.Context()).WithLabelValues(reportedVerb, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Subresource, scope, component)
+		g = longRunningRequestGauge.WithLabelValues(reportedVerb, requestInfo.APIGroup, requestInfo.APIVersion, requestInfo.Resource, requestInfo.Subresource, scope, component)
 	} else {
-		e = longRunningRequestsGauge.WithContext(req.Context()).WithLabelValues(reportedVerb, "", "", "", requestInfo.Path, scope, component)
-		g = longRunningRequestGauge.WithContext(req.Context()).WithLabelValues(reportedVerb, "", "", "", requestInfo.Path, scope, component)
+		g = longRunningRequestGauge.WithLabelValues(reportedVerb, "", "", "", requestInfo.Path, scope, component)
 	}
-	e.Inc()
 	g.Inc()
-	defer func() {
-		e.Dec()
-		g.Dec()
-	}()
+	defer g.Dec()
 	fn()
 }
 
 // MonitorRequest handles standard transformations for client and the reported verb and then invokes Monitor to record
 // a request. verb must be uppercase to be backwards compatible with existing monitoring tooling.
-func MonitorRequest(req *http.Request, verb, group, version, resource, subresource, scope, component string, deprecated bool, removedRelease string, httpCode, respSize int, elapsed time.Duration) {
+func MonitorRequest(req *http.Request, verb, group, version, resource, subresource, scope, component string, deprecated bool, removedRelease string, contentType string, httpCode, respSize int, elapsed time.Duration) {
 	// We don't use verb from <requestInfo>, as this may be propagated from
 	// InstrumentRouteFunc which is registered in installer.go with predefined
 	// list of verbs (different than those translated to RequestInfo).
 	// However, we need to tweak it e.g. to differentiate GET from LIST.
-	reportedVerb := cleanVerb(CanonicalVerb(strings.ToUpper(req.Method), scope), verb, req)
+	reportedVerb := cleanVerb(canonicalVerb(strings.ToUpper(req.Method), scope), verb, req)
 
 	dryRun := cleanDryRun(req.URL)
 	elapsedSeconds := elapsed.Seconds()
-	requestCounter.WithContext(req.Context()).WithLabelValues(reportedVerb, dryRun, group, version, resource, subresource, scope, component, codeToString(httpCode)).Inc()
+	cleanContentType := cleanContentType(contentType)
+	requestCounter.WithLabelValues(reportedVerb, dryRun, group, version, resource, subresource, scope, component, cleanContentType, codeToString(httpCode)).Inc()
 	// MonitorRequest happens after authentication, so we can trust the username given by the request
 	info, ok := request.UserFrom(req.Context())
 	if ok && info.GetName() == user.APIServerUser {
-		apiSelfRequestCounter.WithContext(req.Context()).WithLabelValues(reportedVerb, resource, subresource).Inc()
+		apiSelfRequestCounter.WithLabelValues(reportedVerb, resource, subresource).Inc()
 	}
 	if deprecated {
-		deprecatedRequestGauge.WithContext(req.Context()).WithLabelValues(group, version, resource, subresource, removedRelease).Set(1)
+		deprecatedRequestGauge.WithLabelValues(group, version, resource, subresource, removedRelease).Set(1)
 		audit.AddAuditAnnotation(req.Context(), deprecatedAnnotationKey, "true")
 		if len(removedRelease) > 0 {
 			audit.AddAuditAnnotation(req.Context(), removedReleaseAnnotationKey, removedRelease)
 		}
 	}
-	requestLatencies.WithContext(req.Context()).WithLabelValues(reportedVerb, dryRun, group, version, resource, subresource, scope, component).Observe(elapsedSeconds)
-	if wd, ok := request.WebhookDurationFrom(req.Context()); ok {
-		sloLatency := elapsedSeconds - (wd.AdmitTracker.GetLatency() + wd.ValidateTracker.GetLatency()).Seconds()
-		requestSloLatencies.WithContext(req.Context()).WithLabelValues(reportedVerb, group, version, resource, subresource, scope, component).Observe(sloLatency)
-	}
+	requestLatencies.WithLabelValues(reportedVerb, dryRun, group, version, resource, subresource, scope, component).Observe(elapsedSeconds)
 	// We are only interested in response sizes of read requests.
 	if verb == "GET" || verb == "LIST" {
-		responseSizes.WithContext(req.Context()).WithLabelValues(reportedVerb, group, version, resource, subresource, scope, component).Observe(float64(respSize))
+		responseSizes.WithLabelValues(reportedVerb, group, version, resource, subresource, scope, component).Observe(float64(respSize))
 	}
 }
 
@@ -503,12 +435,20 @@ func InstrumentRouteFunc(verb, group, version, resource, subresource, scope, com
 
 		delegate := &ResponseWriterDelegator{ResponseWriter: response.ResponseWriter}
 
-		rw := responsewriter.WrapForHTTP1Or2(delegate)
+		_, cn := response.ResponseWriter.(http.CloseNotifier)
+		_, fl := response.ResponseWriter.(http.Flusher)
+		_, hj := response.ResponseWriter.(http.Hijacker)
+		var rw http.ResponseWriter
+		if cn && fl && hj {
+			rw = &fancyResponseWriterDelegator{delegate}
+		} else {
+			rw = delegate
+		}
 		response.ResponseWriter = rw
 
 		routeFunc(req, response)
 
-		MonitorRequest(req.Request, verb, group, version, resource, subresource, scope, component, deprecated, removedRelease, delegate.Status(), delegate.ContentLength(), time.Since(requestReceivedTimestamp))
+		MonitorRequest(req.Request, verb, group, version, resource, subresource, scope, component, deprecated, removedRelease, delegate.Header().Get("Content-Type"), delegate.Status(), delegate.ContentLength(), time.Since(requestReceivedTimestamp))
 	})
 }
 
@@ -521,21 +461,42 @@ func InstrumentHandlerFunc(verb, group, version, resource, subresource, scope, c
 		}
 
 		delegate := &ResponseWriterDelegator{ResponseWriter: w}
-		w = responsewriter.WrapForHTTP1Or2(delegate)
+
+		_, cn := w.(http.CloseNotifier)
+		_, fl := w.(http.Flusher)
+		_, hj := w.(http.Hijacker)
+		if cn && fl && hj {
+			w = &fancyResponseWriterDelegator{delegate}
+		} else {
+			w = delegate
+		}
 
 		handler(w, req)
 
-		MonitorRequest(req, verb, group, version, resource, subresource, scope, component, deprecated, removedRelease, delegate.Status(), delegate.ContentLength(), time.Since(requestReceivedTimestamp))
+		MonitorRequest(req, verb, group, version, resource, subresource, scope, component, deprecated, removedRelease, delegate.Header().Get("Content-Type"), delegate.Status(), delegate.ContentLength(), time.Since(requestReceivedTimestamp))
 	}
+}
+
+// cleanContentType binds the contentType (for metrics related purposes) to a
+// bounded set of known/expected content-types.
+func cleanContentType(contentType string) string {
+	normalizedContentType := strings.ToLower(contentType)
+	if strings.HasSuffix(contentType, " stream=watch") || strings.HasSuffix(contentType, " charset=utf-8") {
+		normalizedContentType = strings.ReplaceAll(contentType, " ", "")
+	}
+	if knownMetricContentTypes.Has(normalizedContentType) {
+		return normalizedContentType
+	}
+	return OtherContentType
 }
 
 // CleanScope returns the scope of the request.
 func CleanScope(requestInfo *request.RequestInfo) string {
-	if requestInfo.Name != "" || requestInfo.Verb == "create" {
-		return "resource"
-	}
 	if requestInfo.Namespace != "" {
 		return "namespace"
+	}
+	if requestInfo.Name != "" {
+		return "resource"
 	}
 	if requestInfo.IsResourceRequest {
 		return "cluster"
@@ -544,9 +505,7 @@ func CleanScope(requestInfo *request.RequestInfo) string {
 	return ""
 }
 
-// CanonicalVerb distinguishes LISTs from GETs (and HEADs). It assumes verb is
-// UPPERCASE.
-func CanonicalVerb(verb string, scope string) string {
+func canonicalVerb(verb string, scope string) string {
 	switch verb {
 	case "GET", "HEAD":
 		if scope != "resource" && scope != "" {
@@ -558,12 +517,22 @@ func CanonicalVerb(verb string, scope string) string {
 	}
 }
 
-// CleanVerb returns a normalized verb, so that it is easy to tell WATCH from
-// LIST and APPLY from PATCH.
-func CleanVerb(verb string, request *http.Request) string {
+func cleanVerb(verb, suggestedVerb string, request *http.Request) string {
 	reportedVerb := verb
-	if verb == "LIST" && checkIfWatch(request) {
+	// CanonicalVerb (being an input for this function) doesn't handle correctly the
+	// deprecated path pattern for watch of:
+	//   GET /api/{version}/watch/{resource}
+	// We correct it manually based on the pass verb from the installer.
+	if suggestedVerb == "WATCH" || suggestedVerb == "WATCHLIST" {
 		reportedVerb = "WATCH"
+	}
+	if verb == "LIST" {
+		// see apimachinery/pkg/runtime/conversion.go Convert_Slice_string_To_bool
+		if values := request.URL.Query()["watch"]; len(values) > 0 {
+			if value := strings.ToLower(values[0]); value != "0" && value != "false" {
+				reportedVerb = "WATCH"
+			}
+		}
 	}
 	// normalize the legacy WATCHLIST to WATCH to ensure users aren't surprised by metrics
 	if verb == "WATCHLIST" {
@@ -572,46 +541,10 @@ func CleanVerb(verb string, request *http.Request) string {
 	if verb == "PATCH" && request.Header.Get("Content-Type") == string(types.ApplyPatchType) && utilfeature.DefaultFeatureGate.Enabled(features.ServerSideApply) {
 		reportedVerb = "APPLY"
 	}
-	return reportedVerb
-}
-
-// cleanVerb additionally ensures that unknown verbs don't clog up the metrics.
-func cleanVerb(verb, suggestedVerb string, request *http.Request) string {
-	// CanonicalVerb (being an input for this function) doesn't handle correctly the
-	// deprecated path pattern for watch of:
-	//   GET /api/{version}/watch/{resource}
-	// We correct it manually based on the pass verb from the installer.
-	var reportedVerb string
-	if suggestedVerb == "WATCH" || suggestedVerb == "WATCHLIST" {
-		reportedVerb = "WATCH"
-	} else {
-		reportedVerb = CleanVerb(verb, request)
-	}
 	if validRequestMethods.Has(reportedVerb) {
 		return reportedVerb
 	}
 	return OtherRequestMethod
-}
-
-//getVerbIfWatch additionally ensures that GET or List would be transformed to WATCH
-func getVerbIfWatch(req *http.Request) string {
-	if strings.ToUpper(req.Method) == "GET" || strings.ToUpper(req.Method) == "LIST" {
-		if checkIfWatch(req) {
-			return "WATCH"
-		}
-	}
-	return ""
-}
-
-//checkIfWatch check request is watch
-func checkIfWatch(req *http.Request) bool {
-	// see apimachinery/pkg/runtime/conversion.go Convert_Slice_string_To_bool
-	if values := req.URL.Query()["watch"]; len(values) > 0 {
-		if value := strings.ToLower(values[0]); value != "0" && value != "false" {
-			return true
-		}
-	}
-	return false
 }
 
 func cleanDryRun(u *url.URL) string {
@@ -630,9 +563,6 @@ func cleanDryRun(u *url.URL) string {
 	return strings.Join(utilsets.NewString(dryRun...).List(), ",")
 }
 
-var _ http.ResponseWriter = (*ResponseWriterDelegator)(nil)
-var _ responsewriter.UserProvidedDecorator = (*ResponseWriterDelegator)(nil)
-
 // ResponseWriterDelegator interface wraps http.ResponseWriter to additionally record content-length, status-code, etc.
 type ResponseWriterDelegator struct {
 	http.ResponseWriter
@@ -640,10 +570,6 @@ type ResponseWriterDelegator struct {
 	status      int
 	written     int64
 	wroteHeader bool
-}
-
-func (r *ResponseWriterDelegator) Unwrap() http.ResponseWriter {
-	return r.ResponseWriter
 }
 
 func (r *ResponseWriterDelegator) WriteHeader(code int) {
@@ -667,6 +593,22 @@ func (r *ResponseWriterDelegator) Status() int {
 
 func (r *ResponseWriterDelegator) ContentLength() int {
 	return int(r.written)
+}
+
+type fancyResponseWriterDelegator struct {
+	*ResponseWriterDelegator
+}
+
+func (f *fancyResponseWriterDelegator) CloseNotify() <-chan bool {
+	return f.ResponseWriter.(http.CloseNotifier).CloseNotify()
+}
+
+func (f *fancyResponseWriterDelegator) Flush() {
+	f.ResponseWriter.(http.Flusher).Flush()
+}
+
+func (f *fancyResponseWriterDelegator) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return f.ResponseWriter.(http.Hijacker).Hijack()
 }
 
 // Small optimization over Itoa

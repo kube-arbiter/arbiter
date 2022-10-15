@@ -17,7 +17,6 @@ limitations under the License.
 package filters
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -28,7 +27,7 @@ import (
 
 /*
  * By default, all the following metrics are defined as falling under
- * ALPHA stability level https://github.com/kubernetes/enhancements/blob/master/keps/sig-instrumentation/1209-metrics-stability/kubernetes-control-plane-metrics-stability.md#stability-classes)
+ * ALPHA stability level https://github.com/kubernetes/enhancements/blob/master/keps/sig-instrumentation/20190404-kubernetes-control-plane-metrics-stability.md#stability-classes)
  *
  * Promoting the stability level of the metric is a responsibility of the component owner, since it
  * involves explicitly acknowledging support for the metric across multiple releases, in accordance with
@@ -76,7 +75,7 @@ func init() {
 	legacyregistry.MustRegister(authenticationLatency)
 }
 
-func recordAuthMetrics(ctx context.Context, resp *authenticator.Response, ok bool, err error, apiAudiences authenticator.Audiences, authStart time.Time, authFinish time.Time) {
+func recordAuthMetrics(resp *authenticator.Response, ok bool, err error, apiAudiences authenticator.Audiences, authStart time.Time) {
 	var resultLabel string
 
 	switch {
@@ -86,11 +85,11 @@ func recordAuthMetrics(ctx context.Context, resp *authenticator.Response, ok boo
 		resultLabel = failureLabel
 	default:
 		resultLabel = successLabel
-		authenticatedUserCounter.WithContext(ctx).WithLabelValues(compressUsername(resp.User.GetName())).Inc()
+		authenticatedUserCounter.WithLabelValues(compressUsername(resp.User.GetName())).Inc()
 	}
 
-	authenticatedAttemptsCounter.WithContext(ctx).WithLabelValues(resultLabel).Inc()
-	authenticationLatency.WithContext(ctx).WithLabelValues(resultLabel).Observe(authFinish.Sub(authStart).Seconds())
+	authenticatedAttemptsCounter.WithLabelValues(resultLabel).Inc()
+	authenticationLatency.WithLabelValues(resultLabel).Observe(time.Since(authStart).Seconds())
 }
 
 // compressUsername maps all possible usernames onto a small set of categories

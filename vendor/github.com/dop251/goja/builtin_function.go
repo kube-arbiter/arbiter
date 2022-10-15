@@ -28,10 +28,6 @@ func (r *Runtime) builtin_Function(args []Value, proto *Object) *Object {
 	return ret
 }
 
-func nativeFuncString(f *nativeFuncObject) Value {
-	return newStringValue(fmt.Sprintf("function %s() { [native code] }", nilSafe(f.getStr("name", nil)).toString()))
-}
-
 func (r *Runtime) functionproto_toString(call FunctionCall) Value {
 	obj := r.toObject(call.This)
 repeat:
@@ -45,11 +41,9 @@ repeat:
 	case *arrowFuncObject:
 		return newStringValue(f.src)
 	case *nativeFuncObject:
-		return nativeFuncString(f)
+		return newStringValue(fmt.Sprintf("function %s() { [native code] }", nilSafe(f.getStr("name", nil)).toString()))
 	case *boundFuncObject:
-		return nativeFuncString(&f.nativeFuncObject)
-	case *wrappedFuncObject:
-		return nativeFuncString(&f.nativeFuncObject)
+		return newStringValue(fmt.Sprintf("function %s() { [native code] }", nilSafe(f.getStr("name", nil)).toString()))
 	case *lazyObject:
 		obj.self = f.create(obj)
 		goto repeat

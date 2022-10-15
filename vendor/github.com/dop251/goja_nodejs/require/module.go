@@ -2,6 +2,7 @@ package require
 
 import (
 	"errors"
+	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -113,19 +114,14 @@ func (r *Registry) RegisterNativeModule(name string, loader ModuleLoader) {
 // DefaultSourceLoader is used if none was set (see WithLoader()). It simply loads files from the host's filesystem.
 func DefaultSourceLoader(filename string) ([]byte, error) {
 	fp := filepath.FromSlash(filename)
-	data, err := os.ReadFile(fp)
+	data, err := ioutil.ReadFile(fp)
 	if err != nil {
 		if os.IsNotExist(err) || errors.Is(err, syscall.EISDIR) {
 			err = ModuleFileDoesNotExistError
-		} else if runtime.GOOS == "windows" {
-			if errors.Is(err, syscall.Errno(0x7b)) { // ERROR_INVALID_NAME, The filename, directory name, or volume label syntax is incorrect.
+		} else if runtime.GOOS == "windows" { // temporary workaround for https://github.com/dop251/goja_nodejs/issues/21
+			fi, err1 := os.Stat(fp)
+			if err1 == nil && fi.IsDir() {
 				err = ModuleFileDoesNotExistError
-			} else {
-				// temporary workaround for https://github.com/dop251/goja_nodejs/issues/21
-				fi, err1 := os.Stat(fp)
-				if err1 == nil && fi.IsDir() {
-					err = ModuleFileDoesNotExistError
-				}
 			}
 		}
 	}

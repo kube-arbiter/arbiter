@@ -105,7 +105,7 @@ func (c *FakeObservabilityIndicants) Update(ctx context.Context, observabilityIn
 // Delete takes name of the observabilityIndicant and deletes it. Returns an error if one occurs.
 func (c *FakeObservabilityIndicants) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
 	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(observabilityindicantsResource, c.ns, name, opts), &v1alpha1.ObservabilityIndicant{})
+		Invokes(testing.NewDeleteAction(observabilityindicantsResource, c.ns, name), &v1alpha1.ObservabilityIndicant{})
 
 	return err
 }

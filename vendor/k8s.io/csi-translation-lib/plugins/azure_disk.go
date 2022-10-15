@@ -37,14 +37,13 @@ const (
 	// Parameter names defined in azure disk CSI driver, refer to
 	// https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/driver-parameters.md
 	azureDiskKind        = "kind"
-	azureDiskCachingMode = "cachingmode"
-	azureDiskFSType      = "fstype"
+	azureDiskCachingMode = "cachingMode"
+	azureDiskFSType      = "fsType"
 )
 
 var (
 	managedDiskPathRE   = regexp.MustCompile(`.*/subscriptions/(?:.*)/resourceGroups/(?:.*)/providers/Microsoft.Compute/disks/(.+)`)
 	unmanagedDiskPathRE = regexp.MustCompile(`http(?:.*)://(?:.*)/vhds/(.+)`)
-	managed             = string(v1.AzureManagedDisk)
 )
 
 var _ InTreePlugin = &azureDiskCSITranslator{}
@@ -100,21 +99,18 @@ func (t *azureDiskCSITranslator) TranslateInTreeInlineVolumeToCSI(volume *v1.Vol
 	}
 
 	azureSource := volume.AzureDisk
-	if azureSource.Kind != nil && !strings.EqualFold(string(*azureSource.Kind), managed) {
-		return nil, fmt.Errorf("kind(%v) is not supported in csi migration", *azureSource.Kind)
-	}
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			// Must be unique per disk as it is used as the unique part of the
 			// staging path
-			Name: azureSource.DataDiskURI,
+			Name: fmt.Sprintf("%s-%s", AzureDiskDriverName, azureSource.DiskName),
 		},
 		Spec: v1.PersistentVolumeSpec{
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CSI: &v1.CSIPersistentVolumeSource{
 					Driver:           AzureDiskDriverName,
 					VolumeHandle:     azureSource.DataDiskURI,
-					VolumeAttributes: map[string]string{azureDiskKind: managed},
+					VolumeAttributes: map[string]string{azureDiskKind: "Managed"},
 				},
 			},
 			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
@@ -131,7 +127,9 @@ func (t *azureDiskCSITranslator) TranslateInTreeInlineVolumeToCSI(volume *v1.Vol
 		pv.Spec.PersistentVolumeSource.CSI.FSType = *azureSource.FSType
 		pv.Spec.PersistentVolumeSource.CSI.VolumeAttributes[azureDiskFSType] = *azureSource.FSType
 	}
-	pv.Spec.PersistentVolumeSource.CSI.VolumeAttributes[azureDiskKind] = managed
+	if azureSource.Kind != nil {
+		pv.Spec.PersistentVolumeSource.CSI.VolumeAttributes[azureDiskKind] = string(*azureSource.Kind)
+	}
 
 	return pv, nil
 }
@@ -149,14 +147,10 @@ func (t *azureDiskCSITranslator) TranslateInTreePVToCSI(pv *v1.PersistentVolume)
 		// refer to https://github.com/kubernetes-sigs/azuredisk-csi-driver/blob/master/docs/driver-parameters.md
 		csiSource = &v1.CSIPersistentVolumeSource{
 			Driver:           AzureDiskDriverName,
-			VolumeAttributes: map[string]string{azureDiskKind: managed},
+			VolumeAttributes: map[string]string{azureDiskKind: "Managed"},
 			VolumeHandle:     azureSource.DataDiskURI,
 		}
 	)
-
-	if azureSource.Kind != nil && !strings.EqualFold(string(*azureSource.Kind), managed) {
-		return nil, fmt.Errorf("kind(%v) is not supported in csi migration", *azureSource.Kind)
-	}
 
 	if azureSource.CachingMode != nil {
 		csiSource.VolumeAttributes[azureDiskCachingMode] = string(*azureSource.CachingMode)
@@ -166,7 +160,10 @@ func (t *azureDiskCSITranslator) TranslateInTreePVToCSI(pv *v1.PersistentVolume)
 		csiSource.FSType = *azureSource.FSType
 		csiSource.VolumeAttributes[azureDiskFSType] = *azureSource.FSType
 	}
-	csiSource.VolumeAttributes[azureDiskKind] = managed
+
+	if azureSource.Kind != nil {
+		csiSource.VolumeAttributes[azureDiskKind] = string(*azureSource.Kind)
+	}
 
 	if azureSource.ReadOnly != nil {
 		csiSource.ReadOnly = *azureSource.ReadOnly
@@ -203,21 +200,19 @@ func (t *azureDiskCSITranslator) TranslateCSIPVToInTree(pv *v1.PersistentVolume)
 	}
 
 	if csiSource.VolumeAttributes != nil {
-		for k, v := range csiSource.VolumeAttributes {
-			switch strings.ToLower(k) {
-			case azureDiskCachingMode:
-				if v != "" {
-					mode := v1.AzureDataDiskCachingMode(v)
-					azureSource.CachingMode = &mode
-				}
-			case azureDiskFSType:
-				if v != "" {
-					fsType := v
-					azureSource.FSType = &fsType
-				}
-			}
+		if cachingMode, ok := csiSource.VolumeAttributes[azureDiskCachingMode]; ok {
+			mode := v1.AzureDataDiskCachingMode(cachingMode)
+			azureSource.CachingMode = &mode
 		}
-		azureSource.Kind = &managed
+
+		if fsType, ok := csiSource.VolumeAttributes[azureDiskFSType]; ok && fsType != "" {
+			azureSource.FSType = &fsType
+		}
+
+		if kind, ok := csiSource.VolumeAttributes[azureDiskKind]; ok && kind != "" {
+			diskKind := v1.AzureDataDiskKind(kind)
+			azureSource.Kind = &diskKind
+		}
 	}
 
 	pv.Spec.CSI = nil

@@ -3,16 +3,10 @@ GOARCH ?= $(shell go env GOARCH)
 GOFLAGS ?=""
 SOURCES := $(shell find . -type f  -name '*.go')
 
-#REGISTRY?="172.22.50.223/arbiter"
 REGISTRY ?= "docker.io/kubearbiter"
 
-DOCKER_TARGETS := observer \
-                  executor \
-                  scheduler
-
-TARGETS := ${DOCKER_TARGETS} \
-           abctl
-
+DOCKER_TARGETS := scheduler
+TARGETS := ${DOCKER_TARGETS}
 WHAT ?= $(TARGETS)
 
 # Build binary
@@ -24,9 +18,8 @@ WHAT ?= $(TARGETS)
 #
 # Example:
 #   make all
-#   make all WHAT=observer
-#   make all WHAT=observer GOOS=linux GOARCH=amd64
-#   make binary WHAT=cli GOARCH=amd64 GOOS=darwin
+#   make all WHAT=scheduler
+#   make all WHAT=scheduler GOOS=linux GOARCH=amd64
 
 .PHONY: all
 all: binary
@@ -56,9 +49,9 @@ verify:
 #
 # Example:
 #   make images
-#   make image WHAT=observer
-#   make image WHAT=observer GOARCH=arm64
-#   make image WHAT=observer GOARCH=amd64 OUTPUT_TYPE=registry
+#   make image WHAT=scheduler
+#   make image WHAT=scheduler GOARCH=arm64
+#   make image WHAT=scheduler GOARCH=amd64 OUTPUT_TYPE=registry
 .PHONY: images
 image:
-	@REGISTRY=$(REGISTRY) OUTPUT_TYPE=$(OUTPUT_TYPE) BUILD_PLATFORMS=$(GOOS)/$(GOARCH) hack/build-image.sh $(filter ${DOCKER_TARGETS}, ${WHAT})
+	@REGISTRY=$(REGISTRY) OUTPUT_TYPE=$(OUTPUT_TYPE) BUILD_PLATFORMS=$(GOOS)/$(GOARCH) hack/build-image.sh $(WHAT)

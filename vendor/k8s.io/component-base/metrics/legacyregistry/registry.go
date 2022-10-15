@@ -44,9 +44,7 @@ var (
 )
 
 func init() {
-	//nolint:staticcheck // SA1019 - replacement function still calls prometheus.NewProcessCollector().
 	RawMustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-	//nolint:staticcheck // SA1019 - replacement function still calls prometheus.NewGoCollector().
 	RawMustRegister(prometheus.NewGoCollector())
 }
 

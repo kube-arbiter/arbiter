@@ -36,48 +36,22 @@ type UniquePVCName types.UID
 type GeneratedOperations struct {
 	// Name of operation - could be used for resetting shared exponential backoff
 	OperationName     string
-	OperationFunc     func() (context OperationContext)
+	OperationFunc     func() (eventErr error, detailedErr error)
 	EventRecorderFunc func(*error)
-	CompleteFunc      func(CompleteFuncParam)
-}
-
-type OperationContext struct {
-	EventErr    error
-	DetailedErr error
-	Migrated    bool
-}
-
-func NewOperationContext(eventErr, detailedErr error, migrated bool) OperationContext {
-	return OperationContext{
-		EventErr:    eventErr,
-		DetailedErr: detailedErr,
-		Migrated:    migrated,
-	}
-}
-
-type CompleteFuncParam struct {
-	Err      *error
-	Migrated *bool
+	CompleteFunc      func(*error)
 }
 
 // Run executes the operations and its supporting functions
 func (o *GeneratedOperations) Run() (eventErr, detailedErr error) {
-	var context OperationContext
 	if o.CompleteFunc != nil {
-		c := CompleteFuncParam{
-			Err:      &context.DetailedErr,
-			Migrated: &context.Migrated,
-		}
-		defer o.CompleteFunc(c)
+		defer o.CompleteFunc(&detailedErr)
 	}
 	if o.EventRecorderFunc != nil {
 		defer o.EventRecorderFunc(&eventErr)
 	}
 	// Handle panic, if any, from operationFunc()
 	defer runtime.RecoverFromPanic(&detailedErr)
-
-	context = o.OperationFunc()
-	return context.EventErr, context.DetailedErr
+	return o.OperationFunc()
 }
 
 // FailedPrecondition error indicates CSI operation returned failed precondition
@@ -148,7 +122,10 @@ func IsOperationFinishedError(err error) bool {
 // on PVC and actual filesystem on disk did not match
 func IsFilesystemMismatchError(err error) bool {
 	mountError := mount.MountError{}
-	return errors.As(err, &mountError) && mountError.Type == mount.FilesystemMismatch
+	if errors.As(err, &mountError) && mountError.Type == mount.FilesystemMismatch {
+		return true
+	}
+	return false
 }
 
 // IsUncertainProgressError checks if given error is of type that indicates

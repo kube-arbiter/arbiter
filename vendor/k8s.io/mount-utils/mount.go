@@ -24,7 +24,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	utilexec "k8s.io/utils/exec"
 )
@@ -80,13 +79,6 @@ type Interface interface {
 // Compile-time check to ensure all Mounter implementations satisfy
 // the mount interface.
 var _ Interface = &Mounter{}
-
-type MounterForceUnmounter interface {
-	Interface
-	// UnmountWithForce unmounts given target but will retry unmounting with force option
-	// after given timeout.
-	UnmountWithForce(target string, umountTimeout time.Duration) error
-}
 
 // MountPoint represents a single line in /proc/mounts or /etc/fstab.
 type MountPoint struct { // nolint: golint
