@@ -133,8 +133,14 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 				if len(s) == 0 {
 					return float64(0), nil
 				}
+
+				l := len(s)
 				var sum float64 = 0
 				for _, sval := range s {
+					if sval == "" {
+						l--
+						continue
+					}
 					val, err := strconv.ParseFloat(sval, 64)
 					if err != nil {
 						logger.Error(err, "evaluate error")
@@ -142,8 +148,12 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 					}
 					sum += val
 				}
-				logger.V(4).Info("sum=", "sum", sum)
-				return sum / float64(len(s)), nil
+				if l == 0 {
+					return float64(0), nil
+				}
+				logger.V(4).Infoln("sum=", sum)
+				return sum / (float64(l)), nil
+
 			},
 		}
 

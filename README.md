@@ -4,8 +4,8 @@ Arbiter: An extendable scheduling and scaling tool for Kubernetes
 
 [![License](https://img.shields.io/github/license/kube-arbiter/arbiter.svg?color=4EB1BA&style=flat-square)](https://opensource.org/licenses/Apache-2.0)
 [![GitHub release](https://img.shields.io/github/v/release/kube-arbiter/arbiter.svg?style=flat-square)](https://github.com/kube-arbiter/arbiter/releases/latest)
-[![CI](https://img.shields.io/github/workflow/status/kube-arbiter/arbiter/CI?label=CI&logo=github&style=flat-square)](https://github.com/kube-arbiter/arbiter/actions/workflows/e2e.yaml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kube-arbiter/arbiter?style=flat-square)](https://goreportcard.com/report/github.com/kube-arbiter/arbiter)
+[![CI](https://img.shields.io/github/workflow/status/kube-arbiter/arbiter/e2e?label=CI&logo=github&style=flat-square)](https://github.com/kube-arbiter/arbiter/actions/workflows/e2e.yml)
+[![Go Report Card](https://goreportcard.com/badge/kube-arbiter/arbiter?style=flat-square)](https://goreportcard.com/report/github.com/kube-arbiter/arbiter)
 [![codecov](https://img.shields.io/codecov/c/github/kube-arbiter/arbiter?logo=codecov&style=flat-square)](https://codecov.io/github/kube-arbiter/arbiter)
 [![PRs Welcome](https://badgen.net/badge/PRs/welcome/green?icon=https://api.iconify.design/octicon:git-pull-request.svg?color=white&style=flat-square)](CONTRIBUTING.md)
 
