@@ -75,8 +75,8 @@ function test_obi {
 	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/example/observer/metric
 	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/example/observer/prometheus
 
-	echo "wait 120s for data to fill"
-	sleep 120
+	echo "wait 240s for data to fill"
+	sleep 240
 	for i in $(seq 1 6); do
 		[ $(kubectl get obi -n ${ARBITER_NS} | grep -v 'NAME' | awk '{print NR}' | tail -n1) -eq 8 ] && s=0 && break || s=$? && sleep 10
 	done
@@ -97,8 +97,8 @@ function test_obi {
 			kubectl get obi -n ${ARBITER_NS} -oyaml
 			kubectl get nodes --show-labels
 			kubectl get po -n ${ARBITER_NS} --show-labels
+			exit $s
 		fi
-		exit $s
 	done
 
 	echo "deploy policies wait 30s"
@@ -106,7 +106,7 @@ function test_obi {
 	sleep 30
 
 	for i in $(seq 1 6); do
-		[ $( (kubectl get ObservabilityActionPolicy -n ${ARBITER_NS} | grep -v "NAME") | awk '{print NR}' | tail -n1) -eq 8 ] && s=0 && break || s=$? && sleep 10
+		[ $(kubectl get ObservabilityActionPolicy -n ${ARBITER_NS} | grep -v "NAME" | awk '{print NR}' | tail -n1) -eq 8 ] && s=0 && break || s=$? && sleep 10
 	done
 	(exit $s)
 	if [ $? -ne 0 ]; then
