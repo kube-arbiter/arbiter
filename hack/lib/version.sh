@@ -45,5 +45,5 @@ version::ldflags() {
 }
 
 version::git_version() {
-	GIT_VERSION=$(git describe --tags --dirty --match "v*" --abbrev=14 2>/dev/null || echo "v0.0.0")
+	GIT_VERSION=$(git describe --tags --dirty --match "v*" --abbrev=14 2>/dev/null || echo "v0.1.0")
 }

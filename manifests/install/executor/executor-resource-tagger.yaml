@@ -13,7 +13,7 @@ spec:
     spec:
       containers:
         - image: kubearbiter/executor-resource-tagger:v0.1.0
-          name: resource-tagger-plugin
+          name: executor-resource-tagger
           resources:
             limits:
               cpu: 1
