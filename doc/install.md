@@ -36,7 +36,7 @@ docker pull kubearbiter/observer-metric-server:v0.1.0
 docker pull kubearbiter/observer-prometheus-server:v0.1.0
 
 docker pull kubearbiter/executor:v0.1.0
-docker pull kubearbiter/executor-tagger-plugin:v0.1.0
+docker pull kubearbiter/executor-resource-tagger:v0.1.0
 
 docker pull kubearbiter/scheduler:v0.1.0
 ```

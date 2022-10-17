@@ -3,7 +3,6 @@ GOARCH ?= $(shell go env GOARCH)
 GOFLAGS ?=""
 SOURCES := $(shell find . -type f  -name '*.go')
 
-#REGISTRY?="172.22.50.223/arbiter"
 REGISTRY ?= "docker.io/kubearbiter"
 
 DOCKER_TARGETS := observer \
