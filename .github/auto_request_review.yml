@@ -1,0 +1,50 @@
+reviewers:
+  defaults:
+    - 'nkwangleiGIT'
+    - 0xff-dev
+    - Abirdcfly
+
+  groups:
+    cli:
+      - 0xff-dev
+    executor:
+      - 0xff-dev
+    observer:
+      - 0xff-dev
+    scheduler:
+      - Abirdcfly
+    tests:
+      - Abirdcfly
+      - 'nkwangleiGIT'
+
+files:
+  '.github/**':
+    - tests
+  'build/**':
+    - tests
+  'hack/**':
+    - tests
+  'doc/**':
+    - tests
+  '**/abctl/**':
+    - cli
+  '**/executor/**':
+    - executor
+  '**/observer/**':
+    - observer
+  '**/scheduler/**':
+    - scheduler
+
+options:
+  ignore_draft: true
+  ignored_keywords:
+    - DO NOT REVIEW
+    - DNR
+    - DO NOT MERGE
+    - DNM
+    - WIP
+    - WORK IN PROCESS
+  enable_group_assignment: true
+
+  # Do not set this option if you'd like to assign all matching reviewers.
+  number_of_reviewers: 3
