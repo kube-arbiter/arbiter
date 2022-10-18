@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -50,7 +49,7 @@ type ObservabilityIndicantReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
 func (r *ObservabilityIndicantReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
 
 	instance := &arbiterv1alpha1.ObservabilityIndicant{}
 	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
@@ -66,7 +65,7 @@ func (r *ObservabilityIndicantReconciler) Reconcile(ctx context.Context, req ctr
 		policyName = instance.ObjectMeta.Annotations["observability-action-policy"]
 	}
 	if policyName == "" {
-		klog.Infoln("instance.ObjectMeta.Annotations[\"observability-action-policy\"] has no value")
+		logger.Info("instance.ObjectMeta.Annotations[\"observability-action-policy\"] has no value")
 		return ctrl.Result{}, nil
 	}
 
@@ -76,9 +75,9 @@ func (r *ObservabilityIndicantReconciler) Reconcile(ctx context.Context, req ctr
 		Name:      policyName,
 	}, oap)
 	if err != nil {
-		klog.Errorf("r.Client.Get ObservabilityActionPolicy error: %s\n", err)
+		logger.Error(err, "r.Client.Get ObservabilityActionPolicy error")
 		if errors.IsNotFound(err) {
-			klog.Errorln("ObservabilityActionPolicy IsNotFound")
+			logger.Error(err, "ObservabilityActionPolicy IsNotFound")
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -90,9 +89,9 @@ func (r *ObservabilityIndicantReconciler) Reconcile(ctx context.Context, req ctr
 	if oap.Annotations["obi-resource-version"] != instance.ObjectMeta.GetResourceVersion() {
 		oap.Annotations["obi-resource-version"] = instance.ObjectMeta.GetResourceVersion()
 		if err := r.Client.Update(context.Background(), oap); err != nil {
-			klog.Errorf("update ObservabilityActionPolicy error: %v", err)
+			logger.Error(err, "update ObservabilityActionPolicy error")
 		}
-		klog.Infoln("obi-resource-version updated for observability-action-policy: ", instance.Namespace+"-"+policyName)
+		logger.Info("obi-resource-version updated for observability-action-policy: ", instance.Namespace+"-"+policyName)
 	}
 
 	return ctrl.Result{}, nil
