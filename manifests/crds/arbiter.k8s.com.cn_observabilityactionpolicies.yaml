@@ -39,6 +39,9 @@ spec:
             description: ObservabilityActionPolicySpec defines the desired state of
               ObservabilityActionPolicy
             properties:
+              actionData:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               condition:
                 description: ActionCondition is the condition for the action
                 properties:
@@ -52,10 +55,6 @@ spec:
               obIndicantname:
                 description: ObIndicantName is the name of a ObservabilityIndicant.
                 type: string
-              parameters:
-                additionalProperties:
-                  type: string
-                type: object
             type: object
           status:
             description: ObservabilityActionPolicyStatus defines the observed state

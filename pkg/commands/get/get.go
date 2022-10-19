@@ -45,9 +45,9 @@ func NewGetCommand(option Options) *cobra.Command {
 		Long: `The get command is used to get the obi object. 
 By default, the aggregated data of max, min and agv of the obi object will be displayed, using the following example
 
-obi -nnamespace get [obi-name] -mcpu
+abctl get [obi-name] -n namespace -m cpu
 
-obi -nA get -mmemory -aMAX,MIN`,
+abctl get -A -m memory -aMAX,MIN`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			restCfg, err := option.ConfigFlags.ToRESTConfig()
 			if err != nil {
@@ -60,6 +60,7 @@ obi -nA get -mmemory -aMAX,MIN`,
 				return err
 			}
 
+			allNamespaces, _ := cmd.Flags().GetBool("all-namespaces")
 			metricName, _ := cmd.Flags().GetString("metric-name")
 			labelSelector, _ := cmd.Flags().GetString("selector")
 			namespace, _ := cmd.Flags().GetString("namespace")
@@ -67,7 +68,7 @@ obi -nA get -mmemory -aMAX,MIN`,
 			if len(plugins) > 0 {
 				printer.RegisterDefaultFuncs(strings.Split(plugins, ":")...)
 			}
-			if namespace == "A" {
+			if allNamespaces {
 				namespace = ""
 			}
 			printResources := &v1alpha1.ObservabilityIndicantList{Items: []v1alpha1.ObservabilityIndicant{}}
@@ -110,6 +111,7 @@ obi -nA get -mmemory -aMAX,MIN`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolP("all-namespaces", "A", false, "If present, list the requested object(s) across all namespaces. Namespace in current context is ignored even if specified with --namespace")
 	cmd.Flags().StringP("plugins", "p", "", "register aggregation functions through go's plugin system. If the same name is used, the function introduced later will overwrite the previous function. E.g: -p=/tmp/range.so:/tmp/up.so")
 	cmd.Flags().StringP("metric-name", "m", "", "resource metric name")
 	cmd.Flags().StringP("aggregations", "a", "AVG,MAX,MIN", "select the aggregate function to display")

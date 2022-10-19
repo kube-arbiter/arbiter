@@ -8,9 +8,10 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: metric-server-node-mem
-  parameters:
-    tagging-key: metric-server-node-mem
-    tagging-value: sensitive
+  actionData:
+    labels:
+      memory-sensitive: "true"
+      metric-server-node-mem: metric-server
 status:
   actionInfo: []
   timeInfo:

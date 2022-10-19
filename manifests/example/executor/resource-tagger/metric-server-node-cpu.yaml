@@ -8,9 +8,10 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: metric-server-node-cpu
-  parameters:
-    tagging-key: metric-server-node-cpu
-    tagging-value: sensitive
+  actionData:
+    labels:
+      cpu-sensitive: "true"
+      metric-server-node-cpu: metric-server
 status:
   actionInfo: []
   timeInfo:

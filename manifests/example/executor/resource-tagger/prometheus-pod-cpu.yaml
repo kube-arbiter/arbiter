@@ -8,9 +8,10 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: prometheus-pod-cpu
-  parameters:
-    tagging-key: prometheus-pod-cpu
-    tagging-value: sensitive
+  actionData:
+    labels:
+      cpu-sensitive: "true"
+      prometheus-pod-cpu: prometheus
 status:
   actionInfo: []
   timeInfo:

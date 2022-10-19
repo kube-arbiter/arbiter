@@ -8,9 +8,10 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: prometheus-pod-mem
-  parameters:
-    tagging-key: prometheus-pod-mem
-    tagging-value: sensitive
+  actionData:
+    labels:
+      memory-sensitive: "true"
+      prometheus-pod-mem: prometheus
 status:
   actionInfo: []
   timeInfo:
