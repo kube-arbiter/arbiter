@@ -28,6 +28,9 @@ spec:
           image: {{ .Values.observer.prometheusServer.image.serverImage }}
           imagePullPolicy: {{ .Values.observer.prometheusServer.image.pullPolicy }}
           name: server
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "echo 'hello'|nc local:/var/run/observer.sock"]
           resources:
 {{ toYaml .Values.observer.resources | indent 12 }}
           terminationMessagePath: /dev/termination-log
