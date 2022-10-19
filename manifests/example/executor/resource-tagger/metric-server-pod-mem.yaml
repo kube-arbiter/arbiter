@@ -11,7 +11,7 @@ spec:
   actionData:
     labels:
       memory-sensitive: "true"
-      metric-source: metric-server
+      metric-server-pod-mem: metric-server
 status:
   actionInfo: []
   timeInfo:

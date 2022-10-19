@@ -11,7 +11,7 @@ spec:
   actionData:
     labels:
       memory-sensitive: "true"
-      metric-source: prometheus
+      prometheus-pod-mem: prometheus
 status:
   actionInfo: []
   timeInfo:

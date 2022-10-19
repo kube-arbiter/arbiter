@@ -11,7 +11,7 @@ spec:
   actionData:
     labels:
       cpu-sensitive: "true"
-      metric-source: prometheus
+      prometheus-pod-cpu: prometheus
 status:
   actionInfo: []
   timeInfo:

@@ -11,7 +11,7 @@ spec:
   actionData:
     labels:
       cpu-sensitive: "true"
-      metric-source: metric-server
+      metric-server-node-cpu: metric-server
 status:
   actionInfo: []
   timeInfo:
