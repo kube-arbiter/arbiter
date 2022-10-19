@@ -1,6 +1,6 @@
 reviewers:
   defaults:
-    - 'nkwangleiGIT'
+#     - 'nkwangleiGIT'
     - 0xff-dev
     - Abirdcfly
 
@@ -15,7 +15,7 @@ reviewers:
       - Abirdcfly
     tests:
       - Abirdcfly
-      - 'nkwangleiGIT'
+#       - 'nkwangleiGIT'
 
 files:
   '.github/**':
@@ -47,4 +47,4 @@ options:
   enable_group_assignment: true
 
   # Do not set this option if you'd like to assign all matching reviewers.
-  number_of_reviewers: 3
+  # number_of_reviewers: 3
