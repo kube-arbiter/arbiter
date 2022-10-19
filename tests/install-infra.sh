@@ -59,8 +59,9 @@ function install_crd {
 	echo "observer-prometheus install finish..."
 	# install executor rbac
 	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/install/executor/executor-rbac.yaml
-	# intall executor
-	cat $ROOT/manifests/install/executor/executor-resource-tagger.yaml | sed -e 's/kubearbiter\/executor:.*/localhost:5001\/arbiter.k8s.com.cn\/executor:e2e/g' | kubectl -n ${ARBITER_NS} apply -f -
+	# install executor
+	# use kubearbiter/executor-resource-tagger:e2e for e2e test
+	cat $ROOT/manifests/install/executor/executor-resource-tagger.yaml | sed -e 's/kubearbiter\/executor:.*/localhost:5001\/arbiter.k8s.com.cn\/executor:e2e/g' -e 's/kubearbiter\/executor-resource-tagger:.*/kubearbiter\/executor-resource-tagger:e2e/g' | kubectl -n ${ARBITER_NS} apply -f -
 	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} executor-resource-tagger --for condition=Available=True
 	echo "executor install finish..."
 }
