@@ -17,6 +17,9 @@ spec:
             - -address=http://prometheus-server.kube-system.svc.cluster.local
           image:  kubearbiter/observer-prometheus-server:v0.1.0
           name: prometheus-plugin
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "echo 'hello'|nc local:/var/run/observer.sock"]
           resources:
             limits:
               cpu: 1

@@ -16,6 +16,9 @@ spec:
             - observer-metric-server
           image: kubearbiter/observer-metric-server:v0.1.0
           name: metric-server-plugin
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "echo 'hello'|nc local:/var/run/observer.sock"]
           resources:
             limits:
               cpu: 1
