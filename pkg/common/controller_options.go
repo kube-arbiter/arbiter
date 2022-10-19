@@ -18,8 +18,9 @@ package common
 
 import (
 	"flag"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"time"
+
+	ctrl "sigs.k8s.io/controller-runtime"
 )
 
 var (

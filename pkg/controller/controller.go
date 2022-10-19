@@ -561,7 +561,7 @@ func (c *controller) addMetric(metricName string, data *v1alpha1.ObservabilityIn
 
 		recordLen := len(data.Records)
 		if recordLen == 0 {
-			klog.Warningf("ObservabilityIndicant %s's metric data is emtpy, skip", instance.GetName())
+			klog.Warningf("ObservabilityIndicant %s's metric data is empty, skip", instance.GetName())
 			return nil
 		}
 		// only keep the last item

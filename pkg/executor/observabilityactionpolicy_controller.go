@@ -94,7 +94,6 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 		Name:      instance.Spec.ObIndicantName,
 	}, obi)
 	if err != nil {
-
 		if errors.IsNotFound(err) {
 			logger.Info("ObservabilityIndicant IsNotFound", "ObIndicantName", instance.Spec.ObIndicantName)
 			return ctrl.Result{}, nil
@@ -153,7 +152,6 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 				}
 				logger.V(4).Info("sum=", sum)
 				return sum / (float64(l)), nil
-
 			},
 		}
 
