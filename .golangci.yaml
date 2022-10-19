@@ -65,7 +65,8 @@ issues:
       linters:
         - stylecheck
       text: ST1003  # defaults should use underscores
-  fix: true
+# when fix is true, golangci-lint will try to fix issue, and exit code is 0!
+#  fix: true
 
 linters-settings: # please keep this alphabetized
   errcheck:
