@@ -271,12 +271,11 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 					klog.Infoln("strconv.ParseBool err", err)
 					exprVal = 0
 				}
-
 				message := pb.ExecuteMessage{ResourceName: actionInfo[i].ResourceName,
 					Namespace:  obi.Spec.TargetRef.Namespace,
 					ExprVal:    exprVal,
 					CondVal:    condVal,
-					Parameters: instance.Spec.Parameters,
+					ActionData: instance.Spec.ActionData,
 					Group:      obi.Spec.TargetRef.Group,
 					Version:    obi.Spec.TargetRef.Version,
 					Resources:  "pods",
@@ -307,7 +306,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 	message := pb.ExecuteMessage{
 		ResourceName: resourceName,
 		CondVal:      false,
-		Parameters:   instance.Spec.Parameters,
+		ActionData:   instance.Spec.ActionData,
 		Namespace:    obi.Spec.TargetRef.Namespace,
 		Group:        obi.Spec.TargetRef.Group,
 		Version:      obi.Spec.TargetRef.Version,

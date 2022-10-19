@@ -429,7 +429,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 
 	klog.V(10).Infof("fetchRoute targetRef name: %s, targetRef labels: %v\n", targetRef.Name, targetRef.Labels)
 
-	do1 := func() func() {
+	fetchObiData := func() func() {
 		var (
 			unstructuredResource *unstructured.Unstructured
 			metricName2Query     map[string]string
@@ -507,8 +507,8 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 		}
 	}
 
-	do := do1()
-	do()
+	// Fetch for 1st time
+	fetchObiData()
 
 	for {
 		select {
@@ -516,7 +516,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 			klog.Infof("%s context deadline", method)
 			return
 		case <-time.After(time.Second * time.Duration(instance.Spec.Metric.MetricIntervalSeconds)):
-			do()
+			fetchObiData()
 		}
 	}
 }
