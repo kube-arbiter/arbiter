@@ -508,7 +508,8 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 	}
 
 	// Fetch for 1st time
-	fetchObiData()
+	fetchFunc := fetchObiData()
+	fetchFunc()
 
 	for {
 		select {
@@ -516,7 +517,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 			klog.Infof("%s context deadline", method)
 			return
 		case <-time.After(time.Second * time.Duration(instance.Spec.Metric.MetricIntervalSeconds)):
-			fetchObiData()
+			fetchFunc()
 		}
 	}
 }
