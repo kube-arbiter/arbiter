@@ -23,15 +23,14 @@ spec:
       containers:
         - command:
             - observer-metric-server
-            - -v=4
           image: {{ .Values.observer.metricServer.image.serverImage }}
           imagePullPolicy: {{ .Values.observer.metricServer.image.pullPolicy }}
           name: server
           livenessProbe:
             exec:
               command: ["/bin/sh", "-c", "echo 'hello'|nc local:/var/run/observer.sock"]
-          resources: 
-{{ toYaml .Values.observer.resources | indent 12 }}
+          resources:
+          {{ toYaml .Values.observer.resources | nindent 12 }}
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
           volumeMounts:
@@ -43,7 +42,7 @@ spec:
           imagePullPolicy: {{ .Values.observer.metricServer.image.pullPolicy }}
           name: obi-controller
           resources:
-{{ toYaml .Values.observer.resources | indent 12 }}
+          {{ toYaml .Values.observer.resources | nindent 12 }}
           terminationMessagePath: /dev/termination-log
           terminationMessagePolicy: File
           volumeMounts:
