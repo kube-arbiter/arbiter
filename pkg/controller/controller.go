@@ -429,87 +429,83 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 
 	klog.V(10).Infof("fetchRoute targetRef name: %s, targetRef labels: %v\n", targetRef.Name, targetRef.Labels)
 
-	fetchObiData := func() func() {
-		var (
-			unstructuredResource *unstructured.Unstructured
-			metricName2Query     map[string]string
-			firstCall            = true
-		)
-		return func() {
-			tmpFirstCall := firstCall
-			firstCall = false
-			if tmpFirstCall || (targetRef.Name == "" && len(targetRef.Labels) > 0) {
-				unstructuredResource, err = c.getRuntimeObject(gvr, instance)
-				if err != nil {
-					return
-				}
-				metricName2Query, err = c.renderQuery(instance, unstructuredResource.DeepCopy())
-				if err != nil {
-					klog.Errorf("%s Do renderQuery error: %s\n", utils.ErrorLogPrefix, err)
-					return
-				}
-			}
-			if unstructuredResource == nil {
-				klog.Errorf("%s runtime object is nil", utils.ErrorLogPrefix)
+	var (
+		unstructuredResource *unstructured.Unstructured
+		metricName2Query     map[string]string
+		firstCall            = true
+	)
+	fetchObiData := func() {
+		tmpFirstCall := firstCall
+		firstCall = false
+		if tmpFirstCall || (targetRef.Name == "" && len(targetRef.Labels) > 0) {
+			unstructuredResource, err = c.getRuntimeObject(gvr, instance)
+			if err != nil {
 				return
 			}
-			allMetricSuccess := make([]func(*v1alpha1.ObservabilityIndicant) error, 0)
-			for metricName, args := range instance.Spec.Metric.Metrics {
-				now := time.Now()
-
-				//duration := time.Duration(instance.Spec.Metric.TimeRangeSeconds) * time.Second
-				duration := time.Duration(instance.Spec.Metric.MetricIntervalSeconds) * time.Second
-				obiReq := obi.GetMetricsRequest{
-					ResourceNames: []string{unstructuredResource.GetName()},
-					StartTime:     now.Add(-duration).UnixMilli(),
-					EndTime:       now.UnixMilli(),
-					Unit:          args.Unit,
-					Kind:          unstructuredResource.GetKind(),
-					Namespace:     targetRef.Namespace,
-					MetricName:    metricName,
-					Aggregation:   args.Aggregations,
-				}
-
-				if args.Query != "" {
-					klog.V(5).Infof("this is a query based request")
-					obiReq.Query = metricName2Query[metricName]
-				}
-
-				klog.V(10).Infof("fetch body: %s\n", obiReq.String())
-
-				result, errType, err := c.fetcher.Fetch(subCtx, &obiReq)
-				if err != nil {
-					// NOTE: In the case of context interruption, the error should not be reflected in the conditions.
-					if errType != fetch.FetchCtxDone {
-						utilruntime.HandleError(err)
-						c.recorder.Eventf(instance, corev1.EventTypeWarning,
-							FetchDataErrorEventReason,
-							"instance %s get metric data error: %s", instance.GetName(), err)
-						_ = c.updateStatus(instance.GetNamespace(), instance.GetName(), c.setCondition(err.Error(),
-							v1alpha1.ConditionFailure, v1alpha1.FetchDataError))
-					}
-					break
-				}
-				allMetricSuccess = append(allMetricSuccess, c.addMetric(metricName, result))
-			}
-
-			klog.V(10).Infof("allMetricSuccess match instance Metrics: %v\n", len(allMetricSuccess) == len(instance.Spec.Metric.Metrics))
-
-			if len(allMetricSuccess) == len(instance.Spec.Metric.Metrics) {
-				klog.Infof("%s Update instance %s status\n", method, instance.Name)
-				allMetricSuccess = append(allMetricSuccess, c.setCondition("",
-					v1alpha1.ConditionFetchDataDone, v1alpha1.FetchDataSuccess))
-				if err := c.updateStatus(instance.GetNamespace(), instance.GetName(), allMetricSuccess...); err != nil {
-					utilruntime.HandleError(fmt.Errorf("%s update instance %s status error: %s", utils.ErrorLogPrefix, instance.GetName(), err))
-				}
+			metricName2Query, err = c.renderQuery(instance, unstructuredResource.DeepCopy())
+			if err != nil {
+				klog.Errorf("%s Do renderQuery error: %s\n", utils.ErrorLogPrefix, err)
 				return
 			}
+		}
+		if unstructuredResource == nil {
+			klog.Errorf("%s runtime object is nil", utils.ErrorLogPrefix)
+			return
+		}
+		allMetricSuccess := make([]func(*v1alpha1.ObservabilityIndicant) error, 0)
+		for metricName, args := range instance.Spec.Metric.Metrics {
+			now := time.Now()
+
+			duration := time.Duration(instance.Spec.Metric.MetricIntervalSeconds) * time.Second
+			obiReq := obi.GetMetricsRequest{
+				ResourceNames: []string{unstructuredResource.GetName()},
+				StartTime:     now.Add(-duration).UnixMilli(),
+				EndTime:       now.UnixMilli(),
+				Unit:          args.Unit,
+				Kind:          unstructuredResource.GetKind(),
+				Namespace:     targetRef.Namespace,
+				MetricName:    metricName,
+				Aggregation:   args.Aggregations,
+			}
+
+			if args.Query != "" {
+				klog.V(5).Infof("this is a query based request")
+				obiReq.Query = metricName2Query[metricName]
+			}
+
+			klog.V(10).Infof("fetch body: %s\n", obiReq.String())
+
+			result, errType, err := c.fetcher.Fetch(subCtx, &obiReq)
+			if err != nil {
+				// NOTE: In the case of context interruption, the error should not be reflected in the conditions.
+				if errType != fetch.FetchCtxDone {
+					utilruntime.HandleError(err)
+					c.recorder.Eventf(instance, corev1.EventTypeWarning,
+						FetchDataErrorEventReason,
+						"instance %s get metric data error: %s", instance.GetName(), err)
+					_ = c.updateStatus(instance.GetNamespace(), instance.GetName(), c.setCondition(err.Error(),
+						v1alpha1.ConditionFailure, v1alpha1.FetchDataError))
+				}
+				break
+			}
+			allMetricSuccess = append(allMetricSuccess, c.addMetric(metricName, result))
+		}
+
+		klog.V(10).Infof("allMetricSuccess match instance Metrics: %v\n", len(allMetricSuccess) == len(instance.Spec.Metric.Metrics))
+
+		if len(allMetricSuccess) == len(instance.Spec.Metric.Metrics) {
+			klog.Infof("%s Update instance %s status\n", method, instance.Name)
+			allMetricSuccess = append(allMetricSuccess, c.setCondition("",
+				v1alpha1.ConditionFetchDataDone, v1alpha1.FetchDataSuccess))
+			if err := c.updateStatus(instance.GetNamespace(), instance.GetName(), allMetricSuccess...); err != nil {
+				utilruntime.HandleError(fmt.Errorf("%s update instance %s status error: %s", utils.ErrorLogPrefix, instance.GetName(), err))
+			}
+			return
 		}
 	}
 
 	// Fetch for 1st time
-	fetchFunc := fetchObiData()
-	fetchFunc()
+	fetchObiData()
 
 	for {
 		select {
@@ -517,7 +513,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 			klog.Infof("%s context deadline", method)
 			return
 		case <-time.After(time.Second * time.Duration(instance.Spec.Metric.MetricIntervalSeconds)):
-			fetchFunc()
+			fetchObiData()
 		}
 	}
 }
