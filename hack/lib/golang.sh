@@ -31,7 +31,7 @@ function go::build_binary_for_platform() {
 	local -r arch=${platform##*/}
 
 	set -x
-	CGO_ENABLED=0 GOOS=${os} GOARCH=${arch} go build -v \
+	GO111MODULE=on CGO_ENABLED=0 GOOS=${os} GOARCH=${arch} go build -v \
 		-ldflags "${LDFLAGS:-}" \
 		-o "_output/bin/${platform}/$target" \
 		"cmd/$target/main.go"
@@ -84,4 +84,6 @@ function go::setup_env() {
 	export GOROOT
 
 	unset GOBIN
+
+	cd "$BUILD_GOPATH/src/$PACKAGE_NAME"
 }
