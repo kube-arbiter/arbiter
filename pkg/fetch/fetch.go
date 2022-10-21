@@ -97,7 +97,7 @@ func NewFetcher(conn *grpc.ClientConn, fetchTimeout time.Duration) (Fetcher, err
 			klog.Errorf("NewFetcher: try to get capabilities error: %s\n", err)
 			time.Sleep(5 * time.Second)
 			retryCount++
-			if retryCount >= MaximumConnectRetryCount {
+			if retryCount > MaximumConnectRetryCount {
 				return f, err
 			}
 		} else {
