@@ -77,7 +77,7 @@ func fileExist(path string) bool {
 func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	instance := &arbiterv1alpha1.ObservabilityActionPolicy{}
-	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
+	err := r.Client.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			logger.Info("ObservabilityActionPolicy IsNotFound")
@@ -89,7 +89,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 	}
 
 	obi := &arbiterv1alpha1.ObservabilityIndicant{}
-	err = r.Client.Get(context.TODO(), types.NamespacedName{
+	err = r.Client.Get(ctx, types.NamespacedName{
 		Namespace: instance.Namespace,
 		Name:      instance.Spec.ObIndicantName,
 	}, obi)
@@ -108,14 +108,14 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 	if instance.DeletionTimestamp.IsZero() {
 		if !utils.ContainFinalizers(instance.Finalizers, finalizer) {
 			instance.Finalizers = utils.AddFinalizers(instance.Finalizers, finalizer)
-			err = r.Client.Update(context.TODO(), instance)
+			err = r.Client.Update(ctx, instance)
 			return reconcile.Result{Requeue: true}, err
 		}
 
 		logger.V(4).Info("ObIndicantName", "ObIndicantName", instance.Spec.ObIndicantName)
 		if obi.Annotations["observability-action-policy"] != instance.Name {
 			obi.Annotations["observability-action-policy"] = instance.Name
-			if err := r.Client.Update(context.Background(), obi); err != nil {
+			if err := r.Client.Update(ctx, obi); err != nil {
 				logger.Error(err, "update ObservabilityIndicant",
 					"ObIndicantName", instance.Spec.ObIndicantName)
 			}
@@ -200,7 +200,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 		pai := arbiterv1alpha1.ActionInfo{}
 
 		// Maybe pod or node,
-		resourceName, err := r.FindResourceNameByIndex(obi)
+		resourceName, err := r.FindResourceNameByIndex(ctx, obi)
 		if resourceName == "" {
 			return ctrl.Result{}, err
 		}
@@ -228,7 +228,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 
 		if needUpdate {
 			instance.Status.ActionInfo = actionInfo
-			err = r.Client.Update(context.Background(), instance)
+			err = r.Client.Update(ctx, instance)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
@@ -255,7 +255,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 		defer conn.Close()
 		var (
 			client  = pb.NewExecuteClient(conn)
-			rootCtx = context.Background()
+			rootCtx = ctx
 			timeout = 30 * time.Second
 		)
 
@@ -304,7 +304,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 	logger.Info("Delete Policy. Which will remove finalzer and delete labels",
 		"policy", instance.GetName())
 	instance.Finalizers = utils.RemoveFinalizer(instance.Finalizers, finalizer)
-	resourceName, err := r.FindResourceNameByIndex(obi)
+	resourceName, err := r.FindResourceNameByIndex(ctx, obi)
 	if resourceName == "" {
 		return ctrl.Result{}, err
 	}
@@ -330,13 +330,13 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 	}
 	defer conn.Close()
 	client := pb.NewExecuteClient(conn)
-	_, err = client.Execute(context.TODO(), &message)
+	_, err = client.Execute(ctx, &message)
 	if err != nil {
 		logger.Error(err, "client.Execute")
 		return reconcile.Result{}, err
 	}
 
-	err = r.Client.Update(context.TODO(), instance)
+	err = r.Client.Update(ctx, instance)
 	return reconcile.Result{Requeue: true}, err
 }
 
@@ -355,7 +355,7 @@ func (r *ObservabilityActionPolicyReconciler) SetupWithManager(mgr ctrl.Manager)
 		Complete(r)
 }
 
-func (r *ObservabilityActionPolicyReconciler) FindResourceNameByIndex(obi *arbiterv1alpha1.ObservabilityIndicant) (string, error) {
+func (r *ObservabilityActionPolicyReconciler) FindResourceNameByIndex(ctx context.Context, obi *arbiterv1alpha1.ObservabilityIndicant) (string, error) {
 	resourceName := obi.Spec.TargetRef.Name
 	if resourceName != "" {
 		return resourceName, nil
@@ -370,7 +370,7 @@ func (r *ObservabilityActionPolicyReconciler) FindResourceNameByIndex(obi *arbit
 		options = append(options, client.InNamespace(obi.Spec.TargetRef.Namespace))
 	}
 
-	if err := r.Client.List(context.Background(), &u, options...); err != nil {
+	if err := r.Client.List(ctx, &u, options...); err != nil {
 		if errors.IsNotFound(err) {
 			klog.Errorf("can't find resource by %s/%s/%s\n",
 				obi.Spec.TargetRef.Group, obi.Spec.TargetRef.Version, obi.Spec.TargetRef.Kind)
