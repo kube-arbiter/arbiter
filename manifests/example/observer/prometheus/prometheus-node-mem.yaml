@@ -10,7 +10,7 @@ spec:
       memory:
         aggregations: []
         description: memory
-        query: sum(node_memory_MemTotal_bytes{node="{{.metadata.name}}"} - node_memory_MemAvailable_bytes{node="{{.metadata.name}}"})
+        query: sum(node_memory_MemTotal_bytes{instance="{{.metadata.name}}"} - node_memory_MemAvailable_bytes{instance="{{.metadata.name}}"})
         unit: byte
     timeRangeSeconds: 3600
   source: prometheus

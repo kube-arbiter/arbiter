@@ -257,7 +257,6 @@ func (c *controller) processNextWorkItem() bool {
 		}
 
 		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced '%s'\n", key)
 		return nil
 	}(obi); err != nil {
 		utilruntime.HandleError(err)
@@ -283,15 +282,22 @@ func (c *controller) syncHandler(key string, startFetchRoutine bool) error {
 		return err
 	}
 
-	_, ok := c.watchNamespaces[obi.GetNamespace()]
-	ok = ok || len(c.watchNamespaces) == 0 // watchNamespace=0 means all namespace.
-
-	klog.V(10).Infof("startFetchRoutine: %v, namespace in watch scope: %v\n", startFetchRoutine, ok)
-	if startFetchRoutine && !(ok && obi.Spec.Source == c.fetcher.GetPluginName()) {
-		klog.Infof("SyncHandler: expect sourceName: %s get %s or namespace %s is not in watch scope",
-			c.fetcher.GetPluginName(), obi.Spec.Source, obi.GetNamespace())
+	if obi.Spec.Source != c.fetcher.GetPluginName() {
+		// just return if the OBI source doesn't match with the plugin
 		return nil
 	}
+
+	if len(c.watchNamespaces) == 0 {
+		// watch all namespaces
+		klog.Infof("SyncHandler: watching all namespaces")
+	} else {
+		_, ok := c.watchNamespaces[obi.GetNamespace()]
+		if !ok {
+			// just return if the watched namespace and OBI defined namespace isn't matched
+			return nil
+		}
+	}
+	klog.Infof("SyncHandler: handling '%s'\n", key)
 
 	if obi.DeletionTimestamp.IsZero() {
 		if !utils.ContainFinalizers(obi.Finalizers, finalizer) {
@@ -392,17 +398,22 @@ func (c *controller) renderQuery(
 			continue
 		}
 		klog.V(10).Infof("ObservabilityIndicant %s base query is: %s\n", instance.GetName(), params.Query)
-		if err := utils.RenderQuery(params.Query, unstructuredResource.Object, receiver); err != nil {
-			klog.Errorf("%s error rendering template: %s, won't start goroutine\n", utils.ErrorLogPrefix, err)
-			c.recorder.Eventf(instance,
-				corev1.EventTypeWarning,
-				RenderTemplateEventReason,
-				"error rendering template: %s, won't start goroutine", err)
-			return nil, err
+		if unstructuredResource != nil {
+			if err := utils.RenderQuery(params.Query, unstructuredResource.Object, receiver); err != nil {
+				klog.Errorf("%s error rendering template: %s, won't start goroutine\n", utils.ErrorLogPrefix, err)
+				c.recorder.Eventf(instance,
+					corev1.EventTypeWarning,
+					RenderTemplateEventReason,
+					"error rendering template: %s, won't start goroutine", err)
+				return nil, err
+			}
+			metricName2Query[metricName] = receiver.String()
+			klog.V(10).Infof("ObservabilityIndicant %s redner query is: %s\n", instance.GetName(), metricName2Query[metricName])
+			receiver.Reset()
+		} else {
+			// If the target resource is nil, return the query directly
+			metricName2Query[metricName] = params.Query
 		}
-		metricName2Query[metricName] = receiver.String()
-		klog.V(10).Infof("ObservabilityIndicant %s redner query is: %s\n", instance.GetName(), metricName2Query[metricName])
-		receiver.Reset()
 	}
 	return metricName2Query, nil
 }
@@ -413,21 +424,24 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	var gvr schema.GroupVersionResource
 	targetRef := instance.Spec.TargetRef
-	resourcePlural, err := utils.ResourcePlural(c.kubeClientSet, targetRef.Group, targetRef.Version, targetRef.Kind)
-	if err != nil {
-		klog.Errorf("%s convert kind to resource error: %s\n", utils.ErrorLogPrefix, err)
-		c.recorder.Eventf(instance, corev1.EventTypeWarning, FindResourceErrorEventReason, "convert kind to resource error: %s", err)
-		return
-	}
 
-	gvr := schema.GroupVersionResource{
-		Group:    targetRef.Group,
-		Version:  targetRef.Version,
-		Resource: resourcePlural,
+	if targetRef.Kind == "Node" || targetRef.Kind == "Pod" {
+		// If it's node or pod, get the gvr object
+		resourcePlural, err := utils.ResourcePlural(c.kubeClientSet, targetRef.Group, targetRef.Version, targetRef.Kind)
+		if err != nil {
+			klog.Errorf("%s convert kind to resource error: %s\n", utils.ErrorLogPrefix, err)
+			c.recorder.Eventf(instance, corev1.EventTypeWarning, FindResourceErrorEventReason, "convert kind to resource error: %s", err)
+			return
+		}
+		gvr = schema.GroupVersionResource{
+			Group:    targetRef.Group,
+			Version:  targetRef.Version,
+			Resource: resourcePlural,
+		}
+		klog.V(10).Infof("fetchRoute targetRef name: %s, targetRef labels: %v\n", targetRef.Name, targetRef.Labels)
 	}
-
-	klog.V(10).Infof("fetchRoute targetRef name: %s, targetRef labels: %v\n", targetRef.Name, targetRef.Labels)
 
 	var (
 		unstructuredResource *unstructured.Unstructured
@@ -437,20 +451,30 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 	fetchObiData := func() {
 		tmpFirstCall := firstCall
 		firstCall = false
+		// Get the runtime resource for 1st time if the OBI is based on label match
 		if tmpFirstCall || (targetRef.Name == "" && len(targetRef.Labels) > 0) {
-			unstructuredResource, err = c.getRuntimeObject(gvr, instance)
-			if err != nil {
-				return
+			var err error
+			if !gvr.Empty() {
+				unstructuredResource, err = c.getRuntimeObject(gvr, instance)
+				if err != nil {
+					return
+				}
 			}
-			metricName2Query, err = c.renderQuery(instance, unstructuredResource.DeepCopy())
+			if unstructuredResource != nil {
+				metricName2Query, err = c.renderQuery(instance, unstructuredResource.DeepCopy())
+			} else {
+				metricName2Query, err = c.renderQuery(instance, nil)
+			}
 			if err != nil {
 				klog.Errorf("%s Do renderQuery error: %s\n", utils.ErrorLogPrefix, err)
 				return
 			}
 		}
-		if unstructuredResource == nil {
-			klog.Errorf("%s runtime object is nil", utils.ErrorLogPrefix)
-			return
+		var resourceNames []string
+		var kind string
+		if unstructuredResource != nil {
+			resourceNames = []string{unstructuredResource.GetName()}
+			kind = unstructuredResource.GetKind()
 		}
 		allMetricSuccess := make([]func(*v1alpha1.ObservabilityIndicant) error, 0)
 		for metricName, args := range instance.Spec.Metric.Metrics {
@@ -458,11 +482,11 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 
 			duration := time.Duration(instance.Spec.Metric.MetricIntervalSeconds) * time.Second
 			obiReq := obi.GetMetricsRequest{
-				ResourceNames: []string{unstructuredResource.GetName()},
+				ResourceNames: resourceNames,
 				StartTime:     now.Add(-duration).UnixMilli(),
 				EndTime:       now.UnixMilli(),
 				Unit:          args.Unit,
-				Kind:          unstructuredResource.GetKind(),
+				Kind:          kind,
 				Namespace:     targetRef.Namespace,
 				MetricName:    metricName,
 				Aggregation:   args.Aggregations,

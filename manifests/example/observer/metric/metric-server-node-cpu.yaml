@@ -5,7 +5,8 @@ metadata:
 spec:
   metric:
     historyLimit: 1
-    metricIntervalSeconds: 30
+    # metric-server collect metrics every 15 seconds
+    metricIntervalSeconds: 15
     metrics:
       cpu:
         aggregations:

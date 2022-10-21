@@ -116,7 +116,10 @@ func main() {
 	if err != nil {
 		klog.Fatalf("%s dial %s error: %s", utils.ErrorLogPrefix, *endpoint, err.Error())
 	}
-
+	fetcher, err := fetch.NewFetcher(conn, time.Duration(*fetchTimeout*int(time.Second)))
+	if err != nil {
+		klog.Fatalf("%s dial %s error: %s", utils.ErrorLogPrefix, *endpoint, err.Error())
+	}
 	c := controller.NewController(
 		*namespace,
 		kubeClient,
@@ -124,7 +127,7 @@ func main() {
 		obiClient,
 		kubeInformerFactory.Core().V1().Pods(),
 		obiInformerFactory.Arbiter().V1alpha1().ObservabilityIndicants(),
-		fetch.NewFetcher(conn, time.Duration(*fetchTimeout*int(time.Second))))
+		fetcher)
 
 	kubeInformerFactory.Start(stopCh)
 	obiInformerFactory.Start(stopCh)
