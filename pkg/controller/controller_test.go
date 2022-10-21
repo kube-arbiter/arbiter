@@ -31,8 +31,6 @@ import (
 type KeyFunc func(string, *v1alpha1.ObservabilityIndicant) error
 
 func TestControllerKeyFunc(t *testing.T) {
-	// 给定几组数据，更新status字段
-
 	baseCr := &v1alpha1.ObservabilityIndicant{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      "test-new-cr",
@@ -40,7 +38,6 @@ func TestControllerKeyFunc(t *testing.T) {
 		},
 		Spec: v1alpha1.ObservabilityIndicantSpec{
 			TargetRef: v1alpha1.ObservabilityIndicantSpecTargetRef{
-				// pod
 				Group:     "",
 				Version:   "v1",
 				Kind:      "Pod",
@@ -59,7 +56,7 @@ func TestControllerKeyFunc(t *testing.T) {
 						},
 					},
 				},
-				TimeRangeSeconds:      5,
+				TimeRangeSeconds:      12,
 				HistoryLimit:          1, // max and min both are one.
 				MetricIntervalSeconds: 3,
 			},
@@ -119,6 +116,14 @@ func testAddMetric(name string, instance *v1alpha1.ObservabilityIndicant) error 
 				Unit:       "m",
 				TargetItem: "pod1",
 				Records: []v1alpha1.Record{
+					{
+						Timestamp: now.UnixMilli(),
+						Value:     "0.1",
+					},
+					{
+						Timestamp: now.Add(6 * time.Second).UnixMilli(),
+						Value:     "0.4",
+					},
 					{
 						Timestamp: now.Add(12 * time.Second).UnixMilli(),
 						Value:     "0.7",
@@ -222,12 +227,16 @@ func testLoopUpdate(name string, instance *v1alpha1.ObservabilityIndicant) error
 				TargetItem: "pod1",
 				Records: []v1alpha1.Record{
 					{
-						Timestamp: now.Add(18 * time.Second).UnixMilli(),
-						Value:     "0.11",
+						Timestamp: now.Add(4 * time.Second).UnixMilli(),
+						Value:     "0.3",
 					},
 					{
-						Timestamp: now.Add(20 * time.Second).UnixMilli(),
-						Value:     "0.12",
+						Timestamp: now.Add(10 * time.Second).UnixMilli(),
+						Value:     "0.6",
+					},
+					{
+						Timestamp: now.Add(16 * time.Second).UnixMilli(),
+						Value:     "0.9",
 					},
 					{
 						Timestamp: now.Add(22 * time.Second).UnixMilli(),
@@ -251,7 +260,8 @@ func testLoopUpdate(name string, instance *v1alpha1.ObservabilityIndicant) error
 func testOneRecord(name string, instance *v1alpha1.ObservabilityIndicant) error {
 	log.Printf("%s start to test...\n", name)
 	// NOTE: please deepcopy
-	instance.Spec.Metric.HistoryLimit = 1
+	instance.Spec.Metric.TimeRangeSeconds = 1
+	instance.Spec.Metric.MetricIntervalSeconds = 1
 
 	now := time.Now()
 	loopMetrics := []*v1alpha1.ObservabilityIndicantStatusMetricInfo{
@@ -317,14 +327,6 @@ func testOneRecord(name string, instance *v1alpha1.ObservabilityIndicant) error 
 				TargetItem: "pod1",
 				Records: []v1alpha1.Record{
 					{
-						Timestamp: now.UnixMilli(),
-						Value:     "0.1",
-					},
-					{
-						Timestamp: now.Add(2 * time.Second).UnixMilli(),
-						Value:     "0.2",
-					},
-					{
 						Timestamp: now.Add(4 * time.Second).UnixMilli(),
 						Value:     "0.3",
 					},
@@ -335,14 +337,6 @@ func testOneRecord(name string, instance *v1alpha1.ObservabilityIndicant) error 
 				TargetItem: "pod1",
 				Records: []v1alpha1.Record{
 					{
-						Timestamp: now.Add(6 * time.Second).UnixMilli(),
-						Value:     "0.4",
-					},
-					{
-						Timestamp: now.Add(8 * time.Second).UnixMilli(),
-						Value:     "0.5",
-					},
-					{
 						Timestamp: now.Add(10 * time.Second).UnixMilli(),
 						Value:     "0.6",
 					},
@@ -352,14 +346,6 @@ func testOneRecord(name string, instance *v1alpha1.ObservabilityIndicant) error 
 				Unit:       "C",
 				TargetItem: "pod1",
 				Records: []v1alpha1.Record{
-					{
-						Timestamp: now.Add(12 * time.Second).UnixMilli(),
-						Value:     "0.7",
-					},
-					{
-						Timestamp: now.Add(14 * time.Second).UnixMilli(),
-						Value:     "0.8",
-					},
 					{
 						Timestamp: now.Add(16 * time.Second).UnixMilli(),
 						Value:     "0.9",
