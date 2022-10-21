@@ -52,7 +52,7 @@ func (r *ObservabilityIndicantReconciler) Reconcile(ctx context.Context, req ctr
 	logger := log.FromContext(ctx)
 
 	instance := &arbiterv1alpha1.ObservabilityIndicant{}
-	err := r.Client.Get(context.TODO(), req.NamespacedName, instance)
+	err := r.Client.Get(ctx, req.NamespacedName, instance)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -70,7 +70,7 @@ func (r *ObservabilityIndicantReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	oap := &arbiterv1alpha1.ObservabilityActionPolicy{}
-	err = r.Client.Get(context.TODO(), types.NamespacedName{
+	err = r.Client.Get(ctx, types.NamespacedName{
 		Namespace: instance.Namespace,
 		Name:      policyName,
 	}, oap)
@@ -88,7 +88,7 @@ func (r *ObservabilityIndicantReconciler) Reconcile(ctx context.Context, req ctr
 	}
 	if oap.Annotations["obi-resource-version"] != instance.ObjectMeta.GetResourceVersion() {
 		oap.Annotations["obi-resource-version"] = instance.ObjectMeta.GetResourceVersion()
-		if err := r.Client.Update(context.Background(), oap); err != nil {
+		if err := r.Client.Update(ctx, oap); err != nil {
 			logger.Error(err, "update ObservabilityActionPolicy error")
 		}
 		logger.Info("obi-resource-version updated for observability-action-policy: ", instance.Namespace+"-"+policyName)
