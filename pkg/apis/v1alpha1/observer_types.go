@@ -95,7 +95,7 @@ type ObservabilityIndicantSpecMetric struct {
 	Metrics          map[string]ObservabilityIndicantSpecMetricAbility `json:"metrics"`
 	TimeRangeSeconds int64                                             `json:"timeRangeSeconds"`
 
-	// +kubebuilder:validation:Minimum=30
+	// +kubebuilder:validation:Minimum=5
 	MetricIntervalSeconds int64 `json:"metricIntervalSeconds"`
 
 	// +kubebuilder:validation:Minimum=1
