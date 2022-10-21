@@ -49,9 +49,11 @@ function install_crd {
 
 	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/install/observer/observer-rbac.yaml
 	# install observer metric-server
-	cat $ROOT/manifests/install/observer/observer-metric-server.yaml | sed -e 's/kubearbiter\/observer:.*/localhost:5001\/arbiter.k8s.com.cn\/observer:e2e/g' | kubectl -n ${ARBITER_NS} apply -f -
+	# use kubearbiter/observer-metric-server:dev for e2e test
+	cat $ROOT/manifests/install/observer/observer-metric-server.yaml | sed -e 's/kubearbiter\/observer:.*/localhost:5001\/arbiter.k8s.com.cn\/observer:e2e/g' -e 's/kubearbiter\/observer-metric-server:.*/kubearbiter\/observer-metric-server:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
 	# install observer prometheus
-	cat $ROOT/manifests/install/observer/observer-prometheus.yaml | sed -e 's/kubearbiter\/observer:.*/localhost:5001\/arbiter.k8s.com.cn\/observer:e2e/g' | kubectl -n ${ARBITER_NS} apply -f -
+	# use kubearbiter/observer-promtheus:dev for e2e test
+	cat $ROOT/manifests/install/observer/observer-prometheus.yaml | sed -e 's/kubearbiter\/observer:.*/localhost:5001\/arbiter.k8s.com.cn\/observer:e2e/g' -e 's/kubearbiter\/observer-prometheus:.*/kubearbiter\/observer-prometheus:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
 
 	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} observer-metric-server --for condition=Available=True
 	echo "observer-metric-server install finish..."
@@ -60,8 +62,8 @@ function install_crd {
 	# install executor rbac
 	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/install/executor/executor-rbac.yaml
 	# install executor
-	# use kubearbiter/executor-resource-tagger:e2e for e2e test
-	cat $ROOT/manifests/install/executor/executor-resource-tagger.yaml | sed -e 's/kubearbiter\/executor:.*/localhost:5001\/arbiter.k8s.com.cn\/executor:e2e/g' -e 's/kubearbiter\/executor-resource-tagger:.*/kubearbiter\/executor-resource-tagger:e2e/g' | kubectl -n ${ARBITER_NS} apply -f -
+	# use kubearbiter/executor-resource-tagger:dev for e2e test
+	cat $ROOT/manifests/install/executor/executor-resource-tagger.yaml | sed -e 's/kubearbiter\/executor:.*/localhost:5001\/arbiter.k8s.com.cn\/executor:e2e/g' -e 's/kubearbiter\/executor-resource-tagger:.*/kubearbiter\/executor-resource-tagger:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
 	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} executor-resource-tagger --for condition=Available=True
 	echo "executor install finish..."
 }
