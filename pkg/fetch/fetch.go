@@ -33,11 +33,12 @@ import (
 type FetchErrorType uint8
 
 const (
-	FetchOK        FetchErrorType = 0
-	FetchCtxDone   FetchErrorType = 1
-	FetchTimeOut   FetchErrorType = 2
-	FetchRPC       FetchErrorType = 3
-	FetchDoNothing FetchErrorType = 4
+	FetchOK                  FetchErrorType = 0
+	FetchCtxDone             FetchErrorType = 1
+	FetchTimeOut             FetchErrorType = 2
+	FetchRPC                 FetchErrorType = 3
+	FetchDoNothing           FetchErrorType = 4
+	MaximumConnectRetryCount                = 10
 )
 
 type Resp struct {
@@ -84,23 +85,35 @@ type fetcher struct {
 // verify fetcher impl Fetcher
 var _ Fetcher = &fetcher{}
 
-func NewFetcher(conn *grpc.ClientConn, fetchTimeout time.Duration) Fetcher {
+func NewFetcher(conn *grpc.ClientConn, fetchTimeout time.Duration) (Fetcher, error) {
 	f := &fetcher{rpcCli: obi.NewServerClient(conn), timeout: fetchTimeout}
-	capabilitiers, err := f.rpcCli.PluginCapabilities(context.Background(), &obi.PluginCapabilitiesRequest{})
-	if err != nil {
-		klog.Infof("NewFetcher: try get capabilities error: %s\n", err)
-		return f
+	// try to connect to observer plugin
+	retryCount := 1
+	var capabilitiers *obi.PluginCapabilitiesResponse
+	var err error
+	for {
+		capabilitiers, err = f.rpcCli.PluginCapabilities(context.Background(), &obi.PluginCapabilitiesRequest{})
+		if err != nil {
+			klog.Errorf("NewFetcher: try to get capabilities error: %s\n", err)
+			time.Sleep(5 * time.Second)
+			retryCount++
+			if retryCount > MaximumConnectRetryCount {
+				return f, err
+			}
+		} else {
+			break
+		}
 	}
 
 	f.capabilities = capabilitiers.MetricInfo
 	r, err := f.rpcCli.GetPluginName(context.Background(), &obi.GetPluginNameRequest{})
 	if err != nil {
-		klog.Infof("NewFetcher: try get plugin name error: %s\n", err)
-		return f
+		klog.Infof("NewFetcher: try to get plugin name error: %s\n", err)
+		return f, err
 	}
 	klog.Infof("NewFetcher plugin name: %s\n", r.Name)
 	f.outPluginName = r.Name
-	return f
+	return f, nil
 }
 
 func (f *fetcher) Health() bool {
@@ -113,10 +126,6 @@ func (f *fetcher) GetPluginName() string {
 
 func (f *fetcher) Fetch(ctx context.Context, req *obi.GetMetricsRequest) (*v1alpha1.ObservabilityIndicantStatusMetricInfo, FetchErrorType, error) {
 	method := "fetcher.Fetch"
-
-	if len(req.ResourceNames) == 0 {
-		return nil, FetchDoNothing, nil
-	}
 
 	klog.V(5).Infof("Starting to fetch metrics for resource: %s\n", req.ResourceNames)
 	fetchResult := make(chan error)
