@@ -52,7 +52,7 @@ jobs:
       - golangci
     name: ci test for k8s
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     strategy:
       fail-fast: true
       matrix:
@@ -89,7 +89,7 @@ jobs:
 #        run: |
 #          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
       - name: E2E Test
-        timeout-minutes: 60
+        timeout-minutes: 120
         run: |
           bash -x tests/prepare-k8s.sh
           bash -x tests/install-infra.sh

@@ -224,10 +224,7 @@ spec:
 		})
 	})
 	Describe("schedule pod by node real cost", Label("base", "quick"), Serial, func() {
-		// TODO(Abirdcfly): It seems that in some kubernetes versions the data obtained by the prometheus
-		// in the kind cluster is not the data of the kubernetes node, more analysis is needed,
-		// so pause this test first
-		It("schedule with obi get data from prometheus", FlakeAttempts(3), Pending, func() {
+		It("schedule with obi get data from prometheus", FlakeAttempts(3), func() {
 			const (
 				DeployCostCPUName = "test-cost-cpu-load"
 				DeployCostCPU     = `apiVersion: apps/v1
