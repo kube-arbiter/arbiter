@@ -1,0 +1,31 @@
+# This OBI will get the maximum CPU available on each node
+# So we can add a executor to check this value to see if the maximum CPU value is some small for application to deploy
+# then we can optimize the resource scheduling of the cluster or add a new node.
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: ObservabilityIndicant
+metadata:
+  name: prometheus-max-available-cpu
+spec:
+  metric:
+    historyLimit: 1
+    metricIntervalSeconds: 30
+    metrics:
+      cpu:
+        aggregations: ["max"]
+        description: cpu
+        query: max(sum by (node) (kube_node_status_allocatable_cpu_cores)
+          - sum by (node) (kube_pod_container_resource_requests_cpu_cores) / group by (node) (kube_node_spec_unschedulable{} == 0))
+        unit: 'm'
+    timeRangeSeconds: 3600
+  source: prometheus
+  targetRef:
+    group: ""
+    index: 0
+    kind: Node
+    name: ""
+    namespace: ""
+    version: v1
+status:
+  conditions: []
+  phase: ""
+  metrics: {}

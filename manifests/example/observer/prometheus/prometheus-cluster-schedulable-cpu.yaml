@@ -1,0 +1,32 @@
+# This OBI will get the available CPU of the overall cluster
+# So we can add a executor to check this value to see if we should do cluster autoscaling,
+# such as add a new node to the cluster or remove node from the cluster.
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: ObservabilityIndicant
+metadata:
+  name: prometheus-cluster-schedulable-cpu
+spec:
+  metric:
+    historyLimit: 1
+    metricIntervalSeconds: 30
+    metrics:
+      cpu:
+        aggregations: [ ]
+        description: cpu
+        query: sum(kube_node_status_allocatable_cpu_cores)
+          - sum(sum by (node)(kube_node_status_allocatable_cpu_cores) / (group by (node)(kube_node_spec_taint{name="kube-state-metrics",effect="NoSchedule"})))
+          - sum(sum by (node) (kube_pod_container_resource_requests_cpu_cores)/ group by (node) (kube_node_spec_unschedulable{} == 0))
+        unit: 'm'
+    timeRangeSeconds: 3600
+  source: prometheus
+  targetRef:
+    group: ""
+    index: 0
+    kind: Node
+    name: ""
+    namespace: ""
+    version: v1
+status:
+  conditions: []
+  phase: ""
+  metrics: {}
