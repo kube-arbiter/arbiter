@@ -25,7 +25,7 @@ linters:
     - bidichk
     - bodyclose
     - containedctx
-    # - contextcheck # TODO(Abirdcfly): make it run
+    - contextcheck
     - dupl
     - durationcheck
     - dupword
