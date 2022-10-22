@@ -91,7 +91,7 @@ jobs:
       - name: E2E Test
         timeout-minutes: 60
         run: |
-          bash tests/papre-k8s.sh
+          bash tests/prepare-k8s.sh
           bash tests/install-infra.sh
           cd tests/e2e
           ginkgo -v

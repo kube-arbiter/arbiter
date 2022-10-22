@@ -42,7 +42,7 @@ function install_metrics_server_by_helm {
 }
 
 function install_crd {
-	# papre-k8s already installed.
+	# prepare-k8s already installed.
 	# kubectl apply -f $ROOT/manifests/crds/
 	# install metric, prometheus.
 	kubectl create ns ${ARBITER_NS}
@@ -81,7 +81,7 @@ function test_obi {
 	echo "wait 240s for data to fill"
 	sleep 240
 	for i in $(seq 1 6); do
-		[ $(kubectl get obi -n ${ARBITER_NS} | grep -v 'NAME' | awk '{print NR}' | tail -n1) -eq 8 ] && s=0 && break || s=$? && sleep 10
+		[ $(kubectl get obi -n ${ARBITER_NS} | grep -v 'NAME' | awk '{print NR}' | tail -n1) -eq 11 ] && s=0 && break || s=$? && sleep 10
 	done
 	(exit $s)
 
@@ -90,7 +90,7 @@ function test_obi {
 	fi
 
 	echo "testing obi have data"
-	for name in metric-server-pod-cpu metric-server-pod-mem prometheus-pod-cpu prometheus-pod-mem metric-server-node-cpu metric-server-node-mem prometheus-node-cpu prometheus-node-mem; do
+	for name in metric-server-pod-cpu metric-server-pod-mem prometheus-pod-cpu prometheus-pod-mem metric-server-node-cpu metric-server-node-mem prometheus-node-cpu prometheus-node-mem prometheus-cluster-schedulable-cpu prometheus-max-available-cpu prometheus-rawdata-node-unschedule; do
 		for i in $(seq 1 2); do
 			[ $(kubectl get obi ${name} -n ${ARBITER_NS} -oyaml | grep 'timestamp' | awk '{print NR}' | tail -n1) -ge 2 ] && s=0 && break || s=$? && sleep 10
 		done

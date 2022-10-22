@@ -4,7 +4,7 @@
 apiVersion: arbiter.k8s.com.cn/v1alpha1
 kind: ObservabilityIndicant
 metadata:
-  name: prometheus-node-overcommit
+  name: prometheus-rawdata-node-unschedule
 spec:
   metric:
     historyLimit: 1
