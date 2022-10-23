@@ -1,0 +1,31 @@
+# This OBI will have a None kind, so the OBI controller will populate the raw JSON data to the metrics
+# Then the executor can parse the data and do what they want
+# for example here, if some node is unscheduled, the executor can send a mail to the administrator
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: ObservabilityIndicant
+metadata:
+  name: prometheus-rawdata-node-unschedule
+spec:
+  metric:
+    historyLimit: 1
+    metricIntervalSeconds: 30
+    metrics:
+      cpu:
+        aggregations: [ ]
+        description: cpu
+        query: sum(kube_node_spec_unschedulable) by (node)
+        unit: ''
+    timeRangeSeconds: 3600
+  source: prometheus
+  targetRef:
+    group: ""
+    index: 0
+    # OBI controller will populate the raw data if kind 'None' is defined
+    kind: None
+    name: ""
+    namespace: ""
+    version: v1
+status:
+  conditions: []
+  phase: ""
+  metrics: {}
