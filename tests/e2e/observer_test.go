@@ -32,14 +32,14 @@ var _ = Describe("Observer", Label("observer"), func() {
 				fmt.Println("check the number of obi successfully")
 			})
 
-			Expect(output == "9").Should(BeTrue())
+			Expect(output == "10").Should(BeTrue())
 		})
 
 		It("start to check the data of obi", func() {
 			var output string
 			Expect(countChecker(obiDataCommand(), &output)).Error().Should(Succeed())
 
-			Expect(output == "9").Should(BeTrue())
+			Expect(output == "10").Should(BeTrue())
 		})
 
 	})
