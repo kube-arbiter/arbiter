@@ -142,10 +142,10 @@ function test_abctl() {
 	goarch=$(go env GOARCH)
 	make -C "${ROOT}" binary WHAT=abctl GOARCH=$goarch GOOS=$goos
 
-	echo "expect 8 obi"
+	echo "expect 9 obi"
 	obi_count=$($ROOT/_output/bin/$goos/$goarch/abctl -n ${ARBITER_NS} get -mcpu | grep -v 'NAME' | awk '{print NR}' | tail -n1)
-	if [ $obi_count -ne 8 ]; then
-		echo "get $obi_count obi, not 8"
+	if [ $obi_count -ne 9 ]; then
+		echo "get $obi_count obi, not 9"
 		exit 1
 	fi
 	echo "test abctl successfully"
