@@ -81,7 +81,7 @@ function test_obi {
 	echo "wait 240s for data to fill"
 	sleep 240
 	for i in $(seq 1 6); do
-		[ $(kubectl get obi -n ${ARBITER_NS} | grep -v 'NAME' | awk '{print NR}' | tail -n1) -eq 10 ] && s=0 && break || s=$? && sleep 10
+		[ $(kubectl get obi -n ${ARBITER_NS} | grep -v 'NAME' | awk '{print NR}' | tail -n1) -eq 11 ] && s=0 && break || s=$? && sleep 10
 	done
 	(exit $s)
 
@@ -90,7 +90,7 @@ function test_obi {
 	fi
 
 	echo "testing obi have data"
-	for name in metric-server-pod-cpu metric-server-pod-mem prometheus-pod-cpu prometheus-pod-mem metric-server-node-cpu metric-server-node-mem prometheus-node-cpu prometheus-node-mem prometheus-cluster-schedulable-cpu; do
+	for name in metric-server-pod-cpu metric-server-pod-mem prometheus-pod-cpu prometheus-pod-mem metric-server-node-cpu metric-server-node-mem prometheus-node-cpu prometheus-node-mem prometheus-cluster-schedulable-cpu prometheus-max-available-cpu prometheus-rawdata-node-unschedule; do
 		for i in $(seq 1 2); do
 			[ $(kubectl get obi ${name} -n ${ARBITER_NS} -oyaml | grep 'timestamp' | awk '{print NR}' | tail -n1) -ge 2 ] && s=0 && break || s=$? && sleep 10
 		done
@@ -142,10 +142,10 @@ function test_abctl() {
 	goarch=$(go env GOARCH)
 	make -C "${ROOT}" binary WHAT=abctl GOARCH=$goarch GOOS=$goos
 
-	echo "expect 10 obi"
+	echo "expect 11 obi"
 	obi_count=$($ROOT/_output/bin/$goos/$goarch/abctl -n ${ARBITER_NS} get -mcpu | grep -v 'NAME' | awk '{print NR}' | tail -n1)
-	if [ $obi_count -ne 10 ]; then
-		echo "get $obi_count obi, not 10"
+	if [ $obi_count -ne 11 ]; then
+		echo "get $obi_count obi, not 11"
 		exit 1
 	fi
 	echo "test abctl successfully"
