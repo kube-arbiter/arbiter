@@ -17,11 +17,9 @@ limitations under the License.
 package controller
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 	"time"
 
@@ -29,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -349,75 +346,6 @@ func (c *controller) syncHandler(key string, startFetchRoutine bool) error {
 	return nil
 }
 
-func (c *controller) getRuntimeObject(
-	gvr schema.GroupVersionResource,
-	instance *v1alpha1.ObservabilityIndicant) (*unstructured.Unstructured, error) {
-	targetRef := instance.Spec.TargetRef
-
-	klog.V(10).Infof("getRuntimeObject by %s\n", gvr.String())
-	unstructuredResource := &unstructured.Unstructured{}
-	var err error
-	resourceInterface := c.dynamicClient.Resource(gvr).Namespace(targetRef.Namespace)
-	if targetRef.Name != "" {
-		unstructuredResource, err = resourceInterface.Get(context.TODO(), targetRef.Name, meta.GetOptions{})
-		if err != nil {
-			klog.Errorf("%s get resource %s by name %s error: %s\n", utils.ErrorLogPrefix, gvr, targetRef.Name, err)
-			return unstructuredResource, err
-		}
-	} else if len(targetRef.Labels) > 0 {
-		labelSelector := labels.FormatLabels(targetRef.Labels)
-		rs, err := resourceInterface.List(context.TODO(), meta.ListOptions{
-			LabelSelector: labelSelector,
-		})
-		if err != nil {
-			klog.Errorf("%s list resources %s by label %s error: %s\n", utils.ErrorLogPrefix, gvr, labelSelector, err)
-			return unstructuredResource, err
-		}
-		sort.Slice(rs.Items, func(i, j int) bool {
-			return rs.Items[i].GetName() < rs.Items[j].GetName()
-		})
-		if targetRef.Index >= uint64(len(rs.Items)) {
-			klog.Errorf("%s list resources %s by label %s IndexOutOfRange. index out of range [%d] with length %d\n",
-				utils.ErrorLogPrefix, gvr, labelSelector, targetRef.Index, len(rs.Items))
-			c.recorder.Event(instance, corev1.EventTypeWarning, "IndexOutOfRange",
-				fmt.Sprintf("index out of range [%d] with length %d", targetRef.Index, len(rs.Items)))
-			return nil, fmt.Errorf("index out of range [%d] with length %d", targetRef.Index, len(rs.Items))
-		}
-		unstructuredResource = &rs.Items[targetRef.Index]
-	}
-	return unstructuredResource, nil
-}
-
-func (c *controller) renderQuery(
-	instance *v1alpha1.ObservabilityIndicant,
-	unstructuredResource *unstructured.Unstructured) (map[string]string, error) {
-	receiver := bytes.NewBuffer([]byte{})
-	metricName2Query := make(map[string]string)
-	for metricName, params := range instance.Spec.Metric.Metrics {
-		if params.Query == "" {
-			continue
-		}
-		klog.V(10).Infof("ObservabilityIndicant %s base query is: %s\n", instance.GetName(), params.Query)
-		if unstructuredResource != nil {
-			if err := utils.RenderQuery(params.Query, unstructuredResource.Object, receiver); err != nil {
-				klog.Errorf("%s error rendering template: %s, won't start goroutine\n", utils.ErrorLogPrefix, err)
-				c.recorder.Eventf(instance,
-					corev1.EventTypeWarning,
-					RenderTemplateEventReason,
-					"error rendering template: %s, won't start goroutine", err)
-				return nil, err
-			}
-			metricName2Query[metricName] = receiver.String()
-			klog.V(10).Infof("ObservabilityIndicant %s redner query is: %s\n", instance.GetName(), metricName2Query[metricName])
-			receiver.Reset()
-		} else {
-			// If the target resource is nil, return the query directly
-			metricName2Query[metricName] = params.Query
-		}
-	}
-	return metricName2Query, nil
-}
-
 func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.ObservabilityIndicant) {
 	method := "controller.fetchRoute"
 	// TODO(0xff-dev): now only support metric.
@@ -455,7 +383,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 		if tmpFirstCall || (targetRef.Name == "" && len(targetRef.Labels) > 0) {
 			var err error
 			if !gvr.Empty() {
-				unstructuredResource, err = c.getRuntimeObject(gvr, instance)
+				unstructuredResource, err = c.getRuntimeObject(subCtx, gvr, instance)
 				if err != nil {
 					return
 				}
@@ -463,7 +391,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 			if unstructuredResource != nil {
 				metricName2Query, err = c.renderQuery(instance, unstructuredResource.DeepCopy())
 			} else {
-				metricName2Query, err = c.renderQuery(instance, nil)
+				metricName2Query, err = c.renderQuery(instance, &unstructured.Unstructured{Object: map[string]interface{}{}})
 			}
 			if err != nil {
 				klog.Errorf("%s Do renderQuery error: %s\n", utils.ErrorLogPrefix, err)
@@ -507,7 +435,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 					c.recorder.Eventf(instance, corev1.EventTypeWarning,
 						FetchDataErrorEventReason,
 						"instance %s get metric data error: %s", instance.GetName(), err)
-					_ = c.updateStatus(instance.GetNamespace(), instance.GetName(), c.setCondition(err.Error(),
+					_ = c.updateStatus(subCtx, instance.GetNamespace(), instance.GetName(), c.setCondition(err.Error(),
 						v1alpha1.ConditionFailure, v1alpha1.FetchDataError))
 				}
 				break
@@ -521,7 +449,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 			klog.Infof("%s Update instance %s status\n", method, instance.Name)
 			allMetricSuccess = append(allMetricSuccess, c.setCondition("",
 				v1alpha1.ConditionFetchDataDone, v1alpha1.FetchDataSuccess))
-			if err := c.updateStatus(instance.GetNamespace(), instance.GetName(), allMetricSuccess...); err != nil {
+			if err := c.updateStatus(subCtx, instance.GetNamespace(), instance.GetName(), allMetricSuccess...); err != nil {
 				utilruntime.HandleError(fmt.Errorf("%s update instance %s status error: %s", utils.ErrorLogPrefix, instance.GetName(), err))
 			}
 			return
@@ -539,102 +467,5 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 		case <-time.After(time.Second * time.Duration(instance.Spec.Metric.MetricIntervalSeconds)):
 			fetchObiData()
 		}
-	}
-}
-
-func (c *controller) updateStatus(
-	namespace, name string, extraOpts ...func(*v1alpha1.ObservabilityIndicant) error,
-) error {
-	instance, err := c.observabilityIndicantLister.ObservabilityIndicants(namespace).Get(name)
-	if err != nil {
-		utilruntime.HandleError(fmt.Errorf("%s get instance by name %s in namespace: %serror: %s", utils.ErrorLogPrefix, name, namespace, err))
-		return err
-	}
-
-	for _, opt := range extraOpts {
-		if e := opt(instance); e != nil {
-			utilruntime.HandleError(fmt.Errorf("%s update instance: %s error: %s", utils.ErrorLogPrefix, instance.GetName(), e))
-			return e
-		}
-	}
-
-	_, err = c.observabilityClientSet.ArbiterV1alpha1().ObservabilityIndicants(namespace).Update(context.TODO(), instance, meta.UpdateOptions{})
-	return err
-}
-
-// addMetric For updating instance status
-func (c *controller) addMetric(metricName string, data *v1alpha1.ObservabilityIndicantStatusMetricInfo) func(indicant *v1alpha1.ObservabilityIndicant) error {
-	return func(instance *v1alpha1.ObservabilityIndicant) error {
-		if instance == nil {
-			utilruntime.HandleError(fmt.Errorf("%s instance is nil", utils.ErrorLogPrefix))
-			return fmt.Errorf("instance is nil")
-		}
-
-		metrics := instance.Status.Metrics
-		if metrics == nil {
-			metrics = make(map[string][]v1alpha1.ObservabilityIndicantStatusMetricInfo)
-		}
-
-		historyRecord := instance.Spec.Metric.HistoryLimit
-		if _, ok := metrics[metricName]; !ok {
-			metrics[metricName] = make([]v1alpha1.ObservabilityIndicantStatusMetricInfo, 0, historyRecord)
-		}
-
-		recordLen := len(data.Records)
-		if recordLen == 0 {
-			klog.Warningf("ObservabilityIndicant %s's metric data is empty, skip", instance.GetName())
-			return nil
-		}
-		// only keep the last item
-		data.Records = data.Records[recordLen-1:]
-
-		targetLen := instance.Spec.Metric.TimeRangeSeconds / instance.Spec.Metric.MetricIntervalSeconds
-		if len(metrics[metricName]) == 0 {
-			metrics[metricName] = append(metrics[metricName], *data)
-		} else if len(data.Records) > 0 {
-			currentLen := int64(len(metrics[metricName][0].Records))
-			if currentLen >= targetLen {
-				diff := currentLen - targetLen + 1
-				metrics[metricName][0].Records = metrics[metricName][0].Records[diff:]
-			}
-			metrics[metricName][0].Records = append(metrics[metricName][0].Records, data.Records...)
-			metrics[metricName][0].StartTime = data.StartTime
-			metrics[metricName][0].EndTime = data.EndTime
-		}
-
-		instance.Status.Metrics = metrics
-		klog.V(10).Infof("update ObservabilityIndicant %s.%s metrics, the new metrics is: %#v\n", instance.GetName(), metricName, instance.Status.Metrics)
-		return nil
-	}
-}
-
-// setCondition For updating instance status
-func (c *controller) setCondition(
-	errMsg string,
-	phase v1alpha1.ConditionType,
-	reason v1alpha1.ConditionReason,
-) func(indicant *v1alpha1.ObservabilityIndicant) error {
-	return func(instance *v1alpha1.ObservabilityIndicant) error {
-		if instance == nil {
-			utilruntime.HandleError(fmt.Errorf("%s instance is nil", utils.ErrorLogPrefix))
-			return fmt.Errorf("instance is nil")
-		}
-
-		cond := v1alpha1.Condition{
-			Type:               phase,
-			Reason:             reason,
-			Message:            errMsg,
-			LastHeartbeatTime:  meta.Now(),
-			LastTransitionTime: meta.Now(),
-		}
-
-		if instance.Status.Conditions == nil {
-			instance.Status.Conditions = make([]v1alpha1.Condition, 0)
-		}
-		if len(instance.Status.Conditions) == ConditionRecords {
-			instance.Status.Conditions = instance.Status.Conditions[1:]
-		}
-		instance.Status.Conditions = append(instance.Status.Conditions, cond)
-		return nil
 	}
 }
