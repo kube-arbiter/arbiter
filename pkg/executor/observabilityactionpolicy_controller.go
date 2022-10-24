@@ -102,7 +102,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 		}
 		return ctrl.Result{}, err
 	}
-	//sockFile := sockAddr + instance.Spec.ActionProvider + ".sock"
+	// sockFile := sockAddr + instance.Spec.ActionProvider + ".sock"
 	sockFile := r.SockAddr
 
 	if instance.DeletionTimestamp.IsZero() {
