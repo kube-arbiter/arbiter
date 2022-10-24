@@ -597,7 +597,7 @@ func (c *controller) addMetric(metricName string, data *v1alpha1.ObservabilityIn
 				diff := currentLen - targetLen + 1
 				metrics[metricName][0].Records = metrics[metricName][0].Records[diff:]
 			}
-			metrics[metricName][0].Records = append(metrics[metricName][0].Records, (*data).Records...)
+			metrics[metricName][0].Records = append(metrics[metricName][0].Records, data.Records...)
 			metrics[metricName][0].StartTime = data.StartTime
 			metrics[metricName][0].EndTime = data.EndTime
 		}

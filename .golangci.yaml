@@ -33,6 +33,7 @@ linters:
     - errname
     - gci
     - goconst
+    - gocritic
   # - godox  # useful but will make golangci-lint return exit code 1 and check failed
     - goheader
     - grouper
