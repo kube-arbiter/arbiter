@@ -8,6 +8,7 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: metric-server-node-cpu
+  action: label
   actionData:
     labels:
       cpu-sensitive: "true"

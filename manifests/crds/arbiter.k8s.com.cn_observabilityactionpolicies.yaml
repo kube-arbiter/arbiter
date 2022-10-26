@@ -39,6 +39,8 @@ spec:
             description: ObservabilityActionPolicySpec defines the desired state of
               ObservabilityActionPolicy
             properties:
+              action:
+                type: string
               actionData:
                 type: object
                 x-kubernetes-preserve-unknown-fields: true

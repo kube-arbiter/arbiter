@@ -39,6 +39,9 @@ type ObservabilityActionPolicySpec struct {
 	Condition ActionCondition `json:"condition,omitempty"`
 
 	// +optional
+	Action string `json:"action,omitempty"`
+
+	// +optional
 	// +kubebuilder:pruning:PreserveUnknownFields
 	ActionData *runtime.RawExtension `json:"actionData,omitempty"`
 }
