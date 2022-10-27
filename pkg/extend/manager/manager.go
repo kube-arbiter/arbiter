@@ -242,11 +242,12 @@ func (mgr *Manager) ObservabilityIndicantAdd(obj interface{}) {
 		return
 	}
 	var cacheName *gocache.Cache
-	if IsResourceNode(obi.Spec.TargetRef) {
+	switch {
+	case IsResourceNode(obi.Spec.TargetRef):
 		cacheName = mgr.nodeMetric
-	} else if IsResourcePod(obi.Spec.TargetRef) {
+	case IsResourcePod(obi.Spec.TargetRef):
 		cacheName = mgr.podMetric
-	} else {
+	default:
 		klog.V(5).ErrorS(ErrNotFoundInCache, ManagerLogPrefix+"Failed to get cacheName", "TargetRef", obi.Spec.TargetRef)
 		return
 	}
