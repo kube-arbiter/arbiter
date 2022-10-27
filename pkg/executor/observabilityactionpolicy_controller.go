@@ -284,7 +284,7 @@ func (r *ObservabilityActionPolicyReconciler) Reconcile(ctx context.Context, req
 					Version:    obi.Spec.TargetRef.Version,
 					Resources:  "pods",
 					Kind:       pb.Kind_pod,
-					Action:     instance.Spec.Action,
+					Executors:  instance.Spec.Executors,
 				}
 				if obi.Spec.TargetRef.Kind == "Node" {
 					message.Resources = "nodes"
