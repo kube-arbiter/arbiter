@@ -10,7 +10,7 @@ spec:
       cpu:
         aggregations: [ ]
         description: cpu
-        query: (sum(count(node_cpu_seconds_total{mode="idle",instance="{{.metadata.name}}"}) by (mode, cpu)) - sum(irate(node_cpu_seconds_total{mode="idle",instance="{{.metadata.name}}"}[5m])))*1000
+        query: (sum(count(node_cpu_seconds_total{mode="idle", node="{{.metadata.name}}"}) by (mode, cpu)) - sum(irate(node_cpu_seconds_total{mode="idle", node="{{.metadata.name}}"}[5m])))*1000
         unit: 'm'
     timeRangeSeconds: 3600
   source: prometheus

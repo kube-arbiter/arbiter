@@ -180,8 +180,8 @@ function install_scheduler_crd {
 }
 
 function remove_master_taint {
-	kubectl taint nodes arbiter-e2e-control-plane node-role.kubernetes.io/master- || echo 0
-	kubectl taint nodes arbiter-e2e-control-plane node-role.kubernetes.io/control-plane- || echo 0
+	kubectl taint nodes arbiter-e2e-control-plane node-role.kubernetes.io/master- 2>/dev/null || true
+	kubectl taint nodes arbiter-e2e-control-plane node-role.kubernetes.io/control-plane- 2>/dev/null || true
 }
 
 # main

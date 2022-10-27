@@ -94,7 +94,15 @@ function test_obi {
 		for i in $(seq 1 2); do
 			[ $(kubectl get obi ${name} -n ${ARBITER_NS} -oyaml | grep 'timestamp' | awk '{print NR}' | tail -n1) -ge 2 ] && s=0 && break || s=$? && sleep 10
 		done
-		if [ $s -ne 0 ]; then
+
+		# check data valid
+		sum=$(kubectl get obi ${name} -n ${ARBITER_NS} -o jsonpath="{.status.metrics.*[*].records.*.value}" | awk 'BEGIN{sum=0} {for(i=1;i<=NF;i++)sum+=$i} END{print(sum)}')
+		if [ $sum -eq 0 ]; then
+			# The value might not be a number and summed, but it maybe not wrong as the value maybe original raw data from prometheus.
+			sum=$(kubectl get obi ${name} -n ${ARBITER_NS} -o jsonpath="{.status.metrics.*[*].records.*.value}" | grep "value" | wc -l)
+		fi
+
+		if [ $s -ne 0 ] || [ $sum -eq 0 ]; then
 			kubectl get obi -n ${ARBITER_NS} -owide
 			echo $(kubectl get obi -n ${ARBITER_NS} -oyaml | grep 'records' | awk '{print NR}' | tail -n1)
 			kubectl get obi -n ${ARBITER_NS} -oyaml
