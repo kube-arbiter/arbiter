@@ -1,10 +1,9 @@
 apiVersion: v2
-name: arbiter
-description: Arbiter is an observing and managing tool for Kubernetes
+name: overcommit
+description: overcommit
 type: application
-version: 0.2.0
-icon: https://avatars.githubusercontent.com/u/100769167
-appVersion: v0.2.0
+version: v0.1.0
+appVersion: v0.1.0
 keywords:
   - observing
   - arbiter
@@ -18,3 +17,5 @@ maintainers:
     url: https://github.com/Abirdcfly
   - name: 0xff-dev
     url: https://github.com/0xff-dev
+  - name: pengcong08
+    url: https://github.com/pengcong08

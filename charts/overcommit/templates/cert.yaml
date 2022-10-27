@@ -1,0 +1,26 @@
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: overcommit-webhook-cert
+  namespace: {{ .Release.Namespace }}
+spec:
+  secretName: overcommit-tls-secret
+  commonName: {{ .Values.overCommit.serviceName }}
+  dnsNames:
+  - {{ .Values.overCommit.serviceName }}
+  - {{ .Values.overCommit.serviceName }}.{{ .Release.Namespace }}
+  - {{ .Values.overCommit.serviceName }}.{{ .Release.Namespace  }}.svc
+  - {{ .Values.overCommit.serviceName }}.{{ .Release.Namespace }}.svc.local
+  isCA: true
+  duration: 86400h
+  renewBefore: 360h
+  issuerRef:
+    name: selfsigned
+    kind: ClusterIssuer

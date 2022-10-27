@@ -1,0 +1,22 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: overcommit-webhook
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/overcommit-webhook-cert
+webhooks:
+- name: overcommit.webhook.io
+  failurePolicy: Ignore
+  clientConfig:
+    service:
+      name: {{ .Values.overCommit.serviceName }}
+      namespace: {{ .Release.Namespace }}
+      path: "/overcommit/mutate"
+      port: {{ .Values.overCommit.port }}
+  rules:
+  - operations: [ "CREATE", "UPDATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  sideEffects: None
+  admissionReviewVersions: ["v1beta1","v1"]

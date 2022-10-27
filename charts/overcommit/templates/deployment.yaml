@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.overCommit.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: overcommit-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: overcommit-webhook
+  template:
+    metadata:
+      labels:
+        app: overcommit-webhook
+    spec:
+      serviceAccountName: overcommit
+      containers:
+      - name: overcommit-webhook
+        image: {{ .Values.overCommit.image }}
+        command:
+        - webhook
+        ports:
+        - containerPort: {{ .Values.overCommit.port }}
+        volumeMounts:
+        - name: overcommit-tls-secret
+          mountPath: "/etc/webhook/certs"
+          readOnly: true        
+        resources:
+{{ toYaml .Values.overCommit.resources | indent 10 }}      
+      volumes:
+      - name: overcommit-tls-secret
+        secret:
+          secretName: overcommit-tls-secret

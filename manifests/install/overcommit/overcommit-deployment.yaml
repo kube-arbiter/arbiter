@@ -1,0 +1,57 @@
+---
+# Source: arbiter/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: overcommit-webhook
+spec:
+  type: ClusterIP
+  selector:
+    app: overcommit-webhook
+  ports:
+  - protocol: TCP
+    port: 9443
+    targetPort: 9443
+---
+# Source: arbiter/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: overcommit-webhook
+  namespace: default
+  labels:
+    app: overcommit-webhook
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: overcommit-webhook
+  template:
+    metadata:
+      labels:
+        app: overcommit-webhook
+    spec:
+      serviceAccountName: overcommit
+      containers:
+      - name: overcommit-webhook
+        image: kubearbiter/webhook:v0.1.0
+        command:
+        - webhook
+        ports:
+        - containerPort: 9443
+        volumeMounts:
+        - name: overcommit-tls-secret
+          mountPath: "/etc/webhook/certs"
+          readOnly: true        
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 300m
+            memory: 64Mi      
+      volumes:
+      - name: overcommit-tls-secret
+        secret:
+          secretName: overcommit-tls-secret
+

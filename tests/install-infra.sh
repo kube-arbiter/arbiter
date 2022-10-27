@@ -20,6 +20,8 @@ function build_image {
 	echo "build observer image done."
 	make -C "${ROOT}" image WHAT=executor GOARCH=amd64 ARCH=amd64 IMAGE_NAME=executor:e2e
 	echo "build executor image done."
+	make -C "${ROOT}" image WHAT=webhook GOARCH=amd64 ARCH=amd64 IMAGE_NAME=webhook:e2e
+	echo "build webhook image done."
 }
 
 function install_prometheus_by_helm {
@@ -27,6 +29,13 @@ function install_prometheus_by_helm {
 	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 	helm upgrade --wait --install prometheus prometheus-community/prometheus --namespace kube-system --set prometheus.service.type=NodePort --set prometheus.service.nodePort=30900
 	echo "prometheus install finish!"
+}
+
+function install_certmanager_by_helm {
+	echo "cert manager install start..."
+	helm repo add jetstack https://charts.jetstack.io
+	helm upgrade --wait --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.10.0 --set installCRDs=true
+	echo "cert manager install finish!"
 }
 
 function install_metrics_server_by_helm {
@@ -62,6 +71,21 @@ function install_crd {
 	cat $ROOT/manifests/install/executor/executor.yaml | sed -e 's/kubearbiter\/executor:.*/localhost:5001\/arbiter.k8s.com.cn\/executor:e2e/g' -e 's/kubearbiter\/executor-default-plugins:.*/kubearbiter\/executor-default-plugins:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
 	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} executor-server --for condition=Available=True
 	echo "executor install finish..."
+}
+
+function install_webhook {
+	kubectl apply -f $ROOT/manifests/install/overcommit/rbac.yaml
+	# kubectl apply -f $ROOT/manifests/install/overcommit/cert-manager.yaml
+	# kubectl wait deployment -n cert-manager --timeout=${TIMEOUT} cert-manager --for condition=Available=True
+	# kubectl wait deployment -n cert-manager --timeout=${TIMEOUT} cert-manager-cainjector --for condition=Available=True
+	# kubectl wait deployment -n cert-manager --timeout=${TIMEOUT} cert-manager-webhook --for condition=Available=True
+	kubectl apply -f $ROOT/manifests/install/overcommit/overcommit.yaml
+	kubectl apply -f $ROOT/manifests/install/overcommit/webhook.yaml
+	kubectl apply -f $ROOT/manifests/install/overcommit/cert.yaml
+	cat $ROOT/manifests/install/overcommit/overcommit-deployment.yaml | sed -e 's/kubearbiter\/webhook:.*/localhost:5001\/arbiter.k8s.com.cn\/webhook:e2e/g' | kubectl apply -f -
+	kubectl wait deployment --timeout=${TIMEOUT} overcommit-webhook --for condition=Available=True
+	cat $ROOT/manifests/install/overcommit/test.yaml | sed -e 's/kubearbiter\/webhook:.*/localhost:5001\/arbiter.k8s.com.cn\/webhook:e2e/g' | kubectl apply -f -
+	kubectl wait deployment --timeout=${TIMEOUT} test-deployment --for condition=Available=True
 }
 
 function test_obi {
@@ -158,6 +182,7 @@ function test_abctl() {
 set -eE
 install_prometheus_by_helm
 install_metrics_server_by_helm
+install_certmanager_by_helm
 
 build_image
 
@@ -167,7 +192,11 @@ registry_load_image localhost:5001/arbiter.k8s.com.cn/observer:e2e
 docker tag executor:e2e localhost:5001/arbiter.k8s.com.cn/executor:e2e
 registry_load_image localhost:5001/arbiter.k8s.com.cn/executor:e2e
 
+docker tag webhook:e2e localhost:5001/arbiter.k8s.com.cn/webhook:e2e
+registry_load_image localhost:5001/arbiter.k8s.com.cn/webhook:e2e
+
 install_crd
+install_webhook
 
 test_obi
 test_abctl

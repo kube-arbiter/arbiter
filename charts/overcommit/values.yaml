@@ -1,0 +1,12 @@
+overCommit:
+  image: kubearbiter/webhook:v0.1.0 
+  name: overcommit-webhook
+  serviceName: overcommit-webhook
+  port: 9443
+  resources:
+    limits:
+      memory: "128Mi"
+      cpu: "500m"
+    requests:
+      memory: "64Mi"
+      cpu: "300m"

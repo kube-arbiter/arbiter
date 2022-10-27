@@ -1,0 +1,29 @@
+---
+# Source: arbiter/templates/cert.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: overcommit-webhook-cert
+  namespace: default
+spec:
+  secretName: overcommit-tls-secret
+  commonName: overcommit-webhook
+  dnsNames:
+  - overcommit-webhook
+  - overcommit-webhook.default
+  - overcommit-webhook.default.svc
+  - overcommit-webhook.default.svc.local
+  isCA: true
+  duration: 86400h
+  renewBefore: 360h
+  issuerRef:
+    name: selfsigned
+    kind: ClusterIssuer
+---
+# Source: arbiter/templates/cert.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
