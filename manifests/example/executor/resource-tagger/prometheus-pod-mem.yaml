@@ -8,6 +8,7 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: prometheus-pod-mem
+  action: label
   actionData:
     labels:
       memory-sensitive: "true"

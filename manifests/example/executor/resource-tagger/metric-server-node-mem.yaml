@@ -8,6 +8,7 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: metric-server-node-mem
+  action: label
   actionData:
     labels:
       memory-sensitive: "true"
