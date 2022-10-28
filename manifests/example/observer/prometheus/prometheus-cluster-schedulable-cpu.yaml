@@ -13,9 +13,9 @@ spec:
       cpu:
         aggregations: [ ]
         description: cpu
-        query: sum(kube_node_status_allocatable_cpu_cores)
-          - sum(sum by (node)(kube_node_status_allocatable_cpu_cores) / (group by (node)(kube_node_spec_taint{name="kube-state-metrics",effect="NoSchedule"})))
-          - sum(sum by (node) (kube_pod_container_resource_requests_cpu_cores)/ group by (node) (kube_node_spec_unschedulable{} == 0))
+        query: sum(kube_node_status_allocatable{resource="cpu"})
+          - (sum(sum by (node)(kube_node_status_allocatable{resource="cpu"}) / (group by (node)(kube_node_spec_taint{name="kube-state-metrics",effect="NoSchedule"}))) or on () vector(0))
+          - sum(sum by (node) (kube_pod_container_resource_requests{resource="cpu"})/ group by (node) (kube_node_spec_unschedulable == 0))
         unit: 'm'
     timeRangeSeconds: 3600
   source: prometheus
