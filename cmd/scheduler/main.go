@@ -26,7 +26,6 @@ import (
 
 	"github.com/kube-arbiter/arbiter/pkg/extend"
 
-	// Ensure schemarbiter.com/e package is initialized.
 	_ "github.com/kube-arbiter/arbiter/pkg/apis/scheme"
 )
 
@@ -45,9 +44,10 @@ func main() {
 	// normalize func and add the go flag set by hand.
 	// utilflag.InitFlags()
 	logs.InitLogs()
-	defer logs.FlushLogs()
 
 	if err := command.Execute(); err != nil {
+		logs.FlushLogs()
 		os.Exit(1)
 	}
+	logs.FlushLogs()
 }
