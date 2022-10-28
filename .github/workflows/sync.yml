@@ -17,6 +17,5 @@ jobs:
         uses: BetaHuhn/repo-file-sync-action@v1
         with:
           GH_PAT: ${{ secrets.GH_REPO_PAT }} # PAT with full repo scope in https://github.com/settings/tokens, sync pr will use this account.
-          REVIEWERS: Abirdcfly
           PR_LABELS: auto-sync
           COMMIT_EACH_FILE: false
