@@ -1,0 +1,22 @@
+name: Sync Files From branch main to pre
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  sync:
+    if: github.repository == 'kube-arbiter/arbiter'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+      - name: Run GitHub File Sync
+        uses: BetaHuhn/repo-file-sync-action@v1
+        with:
+          GH_PAT: ${{ secrets.GH_REPO_PAT }} # PAT with full repo scope in https://github.com/settings/tokens, sync pr will use this account.
+          REVIEWERS: Abirdcfly
+          PR_LABELS: auto-sync
+          COMMIT_EACH_FILE: false

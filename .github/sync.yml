@@ -1,0 +1,42 @@
+group:
+  repos: kube-arbiter/arbiter@pre
+  files:
+  - source: .golangci.yaml
+    dest: .golangci.yaml
+  - source: LICENSES
+    dest: LICENSES
+    deleteOrphaned: true
+  - source: build/dockerfile.scheduler
+    dest: build/dockerfile.scheduler
+  - source: hack
+    dest: hack
+    exclude: |
+      update-codegen.sh
+      verify-codegen.sh
+      lib/version.sh
+  - source: manifests/crds
+    dest: manifests/crds
+    deleteOrphaned: true
+  - source: manifests/install/scheduler
+    dest: manifests/install/scheduler
+    exclude: |
+      kube-scheduler-arbiter-config.yaml
+  - source: pkg/apis/v1alpha1
+    dest: pkg/apis/v1alpha1
+    deleteOrphaned: true
+  - source: pkg/utils
+    dest: pkg/utils
+    deleteOrphaned: true
+  - source: tests/export-logs.sh
+    dest: tests/export-logs.sh
+  - source: tests/prepare-k8s.sh
+    dest: tests/prepare-k8s.sh
+  - source: tests/kind-with-registry.yaml
+    dest: tests/kind-with-registry.yaml
+  - source: .gitignore
+    dest: .gitignore
+  - source: LICENSE
+    dest: LICENSE
+  - source: OWNERS
+    dest: OWNERS
+
