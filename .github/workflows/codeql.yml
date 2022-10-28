@@ -3,12 +3,10 @@ name: "CodeQL"
 on:
   push:
     branches:
-      - main
+      - pre
   pull_request:
     branches:
-      - main
-  schedule:
-    - cron: '30 1 * * 1'  # utc -> Beijing 9:30 Monday
+      - pre
 
 jobs:
   analyze:
@@ -35,3 +33,7 @@ jobs:
           # queries: ./path/to/local/query, your-org/your-repo/queries@main
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v2
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
