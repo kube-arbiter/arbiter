@@ -104,3 +104,7 @@ jobs:
         with:
           name: log-${{ matrix.k8s-version }}
           path: ${{ env.LOG_DIR }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
