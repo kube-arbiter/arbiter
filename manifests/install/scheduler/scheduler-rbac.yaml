@@ -1,34 +1,24 @@
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: system:kube-scheduler:arbiter
+  name: arbiter.k8s.com.cn.kube-scheduler
 rules:
 - apiGroups: ["arbiter.k8s.com.cn"]
   resources: ["*"]
   verbs: ["get", "list", "watch", "create", "delete", "update", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
-  name: system:kube-scheduler:arbiter
+  name: arbiter.k8s.com.cn.kube-scheduler
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: system:kube-scheduler:arbiter
+  name: arbiter.k8s.com.cn.kube-scheduler
 subjects:
 - apiGroup: rbac.authorization.k8s.io
   kind: User
   name: system:kube-scheduler
----
-kind: ClusterRoleBinding
-apiVersion: rbac.authorization.k8s.io/v1
-metadata:
-  name: system:kube-scheduler:arbiter-default
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: admin
-subjects:
-  - apiGroup: rbac.authorization.k8s.io
-    kind: User
-    name: system:kube-scheduler

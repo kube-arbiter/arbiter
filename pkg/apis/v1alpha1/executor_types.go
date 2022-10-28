@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
 // ActionCondition is the condition for the action
@@ -37,13 +38,18 @@ type ObservabilityActionPolicySpec struct {
 
 	Condition ActionCondition `json:"condition,omitempty"`
 
-	Parameters map[string]string `json:"parameters,omitempty"`
+	// +optional
+	Action string `json:"action,omitempty"`
+
+	// +optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ActionData *runtime.RawExtension `json:"actionData,omitempty"`
 }
 
 // ActionInfo is the information to identify whether a resource is updated
 type ActionInfo struct {
-	// PodName is the name of the pod
-	PodName string `json:"podName,omitempty"`
+	// ResourceName is the name of the pod
+	ResourceName string `json:"resourceName,omitempty"`
 
 	ExpressionValue string `json:"expressionValue,omitempty"`
 
