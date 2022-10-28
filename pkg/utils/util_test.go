@@ -143,6 +143,21 @@ func TestCommonOpt(t *testing.T) {
 			exp: []string{},
 		},
 		{
+			s:   []string{},
+			t:   nil,
+			exp: []string{},
+		},
+		{
+			s:   nil,
+			t:   []string{},
+			exp: []string{},
+		},
+		{
+			s:   []string{"a"},
+			t:   nil,
+			exp: []string{},
+		},
+		{
 			s:   []string{"a"},
 			t:   []string{"a"},
 			exp: []string{"a"},
