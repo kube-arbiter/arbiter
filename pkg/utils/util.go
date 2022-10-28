@@ -16,7 +16,28 @@ limitations under the License.
 
 package utils
 
-const AddFinalizerErrorMsg = "update finalizer"
+import (
+	"fmt"
+	"html/template"
+	"io"
+	"os"
+	"strings"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
+)
+
+var (
+	redColor       = []byte{27, 91, 51, 49, 109}
+	reset          = []byte{27, 91, 48, 109}
+	ErrorLogPrefix = fmt.Sprintf("%s%s%s", redColor, "[Error]", reset)
+)
+
+const (
+	AddFinalizerErrorMsg = "update finalizer"
+	HardGetNamespacePath = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+)
 
 func ContainFinalizers(finalizers []string, f string) bool {
 	if finalizers == nil {
@@ -65,4 +86,45 @@ func CommonOpt(t, s []string) []string {
 		}
 	}
 	return ans
+}
+
+// RenderQuery like helm. Render query using golang's template.
+func RenderQuery(templateQuery string, data any, output io.Writer) error {
+	templateRender := template.Must(template.New("query").Parse(templateQuery))
+
+	return templateRender.Execute(output, data)
+}
+
+func ResourcePlural(client kubernetes.Interface, group, version, kind string) (string, error) {
+	gv := schema.GroupVersion{Group: group, Version: version}
+	resources, err := client.Discovery().ServerResourcesForGroupVersion(gv.String())
+	if err != nil {
+		klog.Errorf("%s discovery groupversion error: %s\n", ErrorLogPrefix, err)
+		return "", err
+	}
+
+	for _, r := range resources.APIResources {
+		if r.Kind == kind && !strings.Contains(r.Name, "/") {
+			klog.V(4).Infof("Resource %s namespaced: %v\n", r.Name, r.Namespaced)
+			return r.Name, nil
+		}
+	}
+	return "", fmt.Errorf("not found resource plural by %s", gv.String())
+}
+
+func PodNamespace() string {
+	f, err := os.Open(HardGetNamespacePath)
+	if err != nil {
+		klog.V(4).Infof("%s try get pod namespace by path %s error: %s", ErrorLogPrefix, HardGetNamespacePath, err)
+		return ""
+	}
+	defer f.Close()
+
+	podNamespace, err := io.ReadAll(f)
+	if err != nil {
+		klog.V(4).Infof("%s try read namespace from %s error: %s", ErrorLogPrefix, HardGetNamespacePath, err)
+		return ""
+	}
+
+	return string(podNamespace)
 }
