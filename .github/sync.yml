@@ -14,6 +14,7 @@ group:
       update-codegen.sh
       verify-codegen.sh
       lib/version.sh
+      verify-helm.sh
   - source: manifests/crds
     dest: manifests/crds
     deleteOrphaned: true
