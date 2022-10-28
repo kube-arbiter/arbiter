@@ -39,6 +39,11 @@ spec:
             description: ObservabilityActionPolicySpec defines the desired state of
               ObservabilityActionPolicy
             properties:
+              action:
+                type: string
+              actionData:
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
               condition:
                 description: ActionCondition is the condition for the action
                 properties:
@@ -52,10 +57,6 @@ spec:
               obIndicantname:
                 description: ObIndicantName is the name of a ObservabilityIndicant.
                 type: string
-              parameters:
-                additionalProperties:
-                  type: string
-                type: object
             type: object
           status:
             description: ObservabilityActionPolicyStatus defines the observed state
@@ -71,8 +72,8 @@ spec:
                       type: string
                     expressionValue:
                       type: string
-                    podName:
-                      description: PodName is the name of the pod
+                    resourceName:
+                      description: ResourceName is the name of the pod
                       type: string
                   type: object
                 type: array

@@ -47,7 +47,7 @@ spec:
                     type: integer
                   metricIntervalSeconds:
                     format: int64
-                    minimum: 30
+                    minimum: 5
                     type: integer
                   metrics:
                     additionalProperties:

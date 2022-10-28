@@ -12,8 +12,8 @@ nodes:
     - containerPort: 30090
       hostPort: 30090
     extraMounts:
-    - hostPath: /tmp/kube-scheduler-configuration.yaml
-      containerPath: /etc/kubernetes/sched-cc.yaml
+    - hostPath: /tmp/kube-scheduler-arbiter-config.yaml
+      containerPath: /etc/kubernetes/kube-scheduler-arbiter-config.yaml
     - hostPath: /tmp/kube-scheduler-new.yaml
       containerPath: /etc/kubernetes/kube-scheduler-new.yaml
   - role: worker
