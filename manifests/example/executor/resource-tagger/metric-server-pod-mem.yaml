@@ -8,7 +8,8 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: metric-server-pod-mem
-  action: label
+  executors:
+  - resourceUpdater
   actionData:
     labels:
       memory-sensitive: "true"

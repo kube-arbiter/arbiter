@@ -8,7 +8,8 @@ spec:
     operator: '>='
     targetValue: "0"
   obIndicantname: prometheus-pod-cpu
-  action: label
+  executors:
+  - resourceUpdater
   actionData:
     labels:
       cpu-sensitive: "true"

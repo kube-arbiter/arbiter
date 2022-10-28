@@ -140,6 +140,11 @@ func (in *ObservabilityActionPolicyList) DeepCopyObject() runtime.Object {
 func (in *ObservabilityActionPolicySpec) DeepCopyInto(out *ObservabilityActionPolicySpec) {
 	*out = *in
 	out.Condition = in.Condition
+	if in.Executors != nil {
+		in, out := &in.Executors, &out.Executors
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.ActionData != nil {
 		in, out := &in.ActionData, &out.ActionData
 		*out = new(runtime.RawExtension)

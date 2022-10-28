@@ -22,7 +22,6 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ExecuteClient interface {
-	ExecuteAction(ctx context.Context, in *ExecuteActionMessage, opts ...grpc.CallOption) (*ExecuteActionResponse, error)
 	Execute(ctx context.Context, in *ExecuteMessage, opts ...grpc.CallOption) (*ExecuteResponse, error)
 }
 
@@ -32,15 +31,6 @@ type executeClient struct {
 
 func NewExecuteClient(cc grpc.ClientConnInterface) ExecuteClient {
 	return &executeClient{cc}
-}
-
-func (c *executeClient) ExecuteAction(ctx context.Context, in *ExecuteActionMessage, opts ...grpc.CallOption) (*ExecuteActionResponse, error) {
-	out := new(ExecuteActionResponse)
-	err := c.cc.Invoke(ctx, "/execute.Execute/ExecuteAction", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *executeClient) Execute(ctx context.Context, in *ExecuteMessage, opts ...grpc.CallOption) (*ExecuteResponse, error) {
@@ -56,7 +46,6 @@ func (c *executeClient) Execute(ctx context.Context, in *ExecuteMessage, opts ..
 // All implementations must embed UnimplementedExecuteServer
 // for forward compatibility
 type ExecuteServer interface {
-	ExecuteAction(context.Context, *ExecuteActionMessage) (*ExecuteActionResponse, error)
 	Execute(context.Context, *ExecuteMessage) (*ExecuteResponse, error)
 	mustEmbedUnimplementedExecuteServer()
 }
@@ -65,9 +54,6 @@ type ExecuteServer interface {
 type UnimplementedExecuteServer struct {
 }
 
-func (UnimplementedExecuteServer) ExecuteAction(context.Context, *ExecuteActionMessage) (*ExecuteActionResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ExecuteAction not implemented")
-}
 func (UnimplementedExecuteServer) Execute(context.Context, *ExecuteMessage) (*ExecuteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Execute not implemented")
 }
@@ -82,24 +68,6 @@ type UnsafeExecuteServer interface {
 
 func RegisterExecuteServer(s grpc.ServiceRegistrar, srv ExecuteServer) {
 	s.RegisterService(&Execute_ServiceDesc, srv)
-}
-
-func _Execute_ExecuteAction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ExecuteActionMessage)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(ExecuteServer).ExecuteAction(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/execute.Execute/ExecuteAction",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ExecuteServer).ExecuteAction(ctx, req.(*ExecuteActionMessage))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _Execute_Execute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -127,10 +95,6 @@ var Execute_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "execute.Execute",
 	HandlerType: (*ExecuteServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "ExecuteAction",
-			Handler:    _Execute_ExecuteAction_Handler,
-		},
 		{
 			MethodName: "Execute",
 			Handler:    _Execute_Execute_Handler,

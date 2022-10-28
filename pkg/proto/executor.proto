@@ -6,15 +6,7 @@ package execute;
 option go_package = "lib/executor";
 
 service Execute {
-    rpc ExecuteAction(ExecuteActionMessage) returns (ExecuteActionResponse) {}
     rpc Execute (ExecuteMessage) returns (ExecuteResponse) {}
-}
-
-message ExecuteActionMessage {
-}
-
-message ExecuteActionResponse {
-    repeated string action = 1;
 }
 
 enum Kind {
@@ -32,7 +24,7 @@ message ExecuteMessage {
     string group = 7;
     string version = 8;
     string resources = 9;
-    string action = 10;
+    repeated string executors = 10;
 }
 
 message ExecuteResponse {
