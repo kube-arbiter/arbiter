@@ -224,7 +224,7 @@ spec:
 		})
 	})
 	Describe("schedule pod by node real cost", Label("base", "quick"), Serial, func() {
-		It("schedule with obi get data from prometheus", FlakeAttempts(3), func() {
+		It("schedule with obi get data from prometheus", FlakeAttempts(3), Focus, func() {
 			const (
 				DeployCostCPUName = "test-cost-cpu-load"
 				DeployCostCPU     = `apiVersion: apps/v1
