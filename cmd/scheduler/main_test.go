@@ -33,7 +33,7 @@ import (
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config/testing/defaults"
 
-	"github.com/kube-arbiter/arbiter/pkg/extend"
+	"github.com/kube-arbiter/arbiter/pkg/scheduler"
 )
 
 func TestSetup(t *testing.T) {
@@ -114,7 +114,7 @@ profiles:
 		{
 			name:            "single profile config - Arbiter",
 			flags:           []string{"--config", ExtendProfilesConfig},
-			registryOptions: []app.Option{app.WithPlugin(extend.Name, extend.New)},
+			registryOptions: []app.Option{app.WithPlugin(scheduler.Name, scheduler.New)},
 			wantPlugins: map[string]*kubeschedulerconfig.Plugins{
 				"default-scheduler": {
 					QueueSort:  defaults.PluginsV1beta2.QueueSort,
@@ -122,7 +122,7 @@ profiles:
 					Filter:     defaults.PluginsV1beta2.Filter,
 					Bind:       defaults.PluginsV1beta2.Bind,
 					PostFilter: defaults.PluginsV1beta2.PostFilter,
-					Score:      kubeschedulerconfig.PluginSet{Enabled: append(defaults.PluginsV1beta2.Score.Enabled, kubeschedulerconfig.Plugin{Name: extend.Name, Weight: 100})},
+					Score:      kubeschedulerconfig.PluginSet{Enabled: append(defaults.PluginsV1beta2.Score.Enabled, kubeschedulerconfig.Plugin{Name: scheduler.Name, Weight: 100})},
 					PreScore:   defaults.PluginsV1beta2.PreScore,
 					Reserve:    defaults.PluginsV1beta2.Reserve,
 					PreBind:    defaults.PluginsV1beta2.PreBind,

@@ -22,14 +22,14 @@ import (
 	"k8s.io/component-base/cli"
 	"k8s.io/kubernetes/cmd/kube-scheduler/app"
 
-	"github.com/kube-arbiter/arbiter/pkg/extend"
+	"github.com/kube-arbiter/arbiter/pkg/scheduler"
 
 	_ "github.com/kube-arbiter/arbiter/pkg/apis/scheme"
 )
 
 func main() {
 	command := app.NewSchedulerCommand(
-		app.WithPlugin(extend.Name, extend.New),
+		app.WithPlugin(scheduler.Name, scheduler.New),
 	)
 
 	code := cli.Run(command)

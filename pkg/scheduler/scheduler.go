@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package extend
+package scheduler
 
 import (
 	"context"
@@ -36,9 +36,9 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper"
 
 	"github.com/kube-arbiter/arbiter/pkg/apis/v1alpha1"
-	"github.com/kube-arbiter/arbiter/pkg/extend/manager"
 	"github.com/kube-arbiter/arbiter/pkg/generated/clientset/versioned"
 	informers "github.com/kube-arbiter/arbiter/pkg/generated/informers/externalversions"
+	"github.com/kube-arbiter/arbiter/pkg/scheduler/manager"
 )
 
 const (
