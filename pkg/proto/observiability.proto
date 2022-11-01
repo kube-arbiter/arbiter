@@ -4,7 +4,7 @@ package obi.v1;
 option go_package = "lib/observer";
 
 service Server {
-    rpc GetPluginName (GetPluginNameRequest)
+    rpc GetPluginNames (GetPluginNameRequest)
         returns (GetPluginNameResponse) {}
     
     rpc PluginCapabilities (PluginCapabilitiesRequest)
@@ -20,7 +20,7 @@ message GetPluginNameRequest {
 }
 
 message GetPluginNameResponse {
-    string name = 1;
+    repeated string names = 1;
     map<string, string> attr = 2;
 }
 
@@ -28,16 +28,19 @@ message PluginCapabilitiesRequest {
     // nothing
 }
 
-message MetricInfo {
+message CapabilityInfo {
     // cpu_usage
     string metric_unit = 1;
     string  description = 2;
     repeated string aggregation = 3; 
 }
 
+message PluginCapability {
+    map<string, CapabilityInfo> capability = 1;
+}
+
 message PluginCapabilitiesResponse {
-    // {"cpu_usage": {"metric_unit":"c","aggregation": ["a","b"]}}
-    map<string, MetricInfo> metric_info = 2;
+    map<string, PluginCapability> capabilities = 1;
 }
 
 message GetMetricsRequest {
@@ -56,8 +59,6 @@ message GetMetricsRequest {
     // such as promql
     string query = 5;
 
-    // 1650867976563 million second
-    // 这个请求时间做一个保留
     int64 start_time = 6;
     int64 end_time = 7;
 
@@ -65,6 +66,7 @@ message GetMetricsRequest {
     string kind = 8;
 
     string unit = 9;
+    string source = 10;
 }
 
 message GetMetricsResponse {
@@ -85,5 +87,6 @@ message GetMetricsResponse {
         string value = 2;
     }
     repeated record records = 4;
-    //map<string,double> values = 4;
+
+    string source = 5;
 }

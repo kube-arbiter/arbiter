@@ -279,8 +279,7 @@ func (c *controller) syncHandler(key string, startFetchRoutine bool) error {
 		return err
 	}
 
-	if obi.Spec.Source != c.fetcher.GetPluginName() {
-		// just return if the OBI source doesn't match with the plugin
+	if _, ok := c.fetcher.GetPluginNames()[obi.Spec.Source]; !ok {
 		return nil
 	}
 
@@ -418,6 +417,7 @@ func (c *controller) fetchRouteV1Alpha1(ctx context.Context, instance *v1alpha1.
 				Namespace:     targetRef.Namespace,
 				MetricName:    metricName,
 				Aggregation:   args.Aggregations,
+				Source:        instance.Spec.Source,
 			}
 
 			if args.Query != "" {

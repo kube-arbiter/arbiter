@@ -7,19 +7,12 @@ observer:
       cpu: 10m
       memory: 64Mi
   serviceAccountName: "observability"
-  metricServer:
-    image:
-      observerImage: "kubearbiter/observer:v0.1.0"
-      serverImage: "kubearbiter/observer-metric-server:v0.1.0"
-      pullPolicy: IfNotPresent
-    nameOverride: "observer-metric-server"
-  prometheusServer:
-    image:
-      observerImage: "kubearbiter/observer:v0.1.0"
-      serverImage: "kubearbiter/observer-prometheus-server:v0.1.0"
-      pullPolicy: IfNotPresent
-    nameOverride: "observer-prometheus"
-    address: "http://prometheus-server.kube-system.svc.cluster.local"
+  image:
+    observerImage: "kubearbiter/observer:v0.1.0"
+    serverImage: "kubearbiter/observer-default-plugins:v0.1.0"
+    pullPolicy: IfNotPresent
+  nameOverride: "observer-plugins"
+  address: "http://prometheus-server.kube-system.svc.cluster.local"
 
 executor:
   nameOverride: "executor"

@@ -542,7 +542,7 @@ spec:
         query: ""
         unit: 'm'
     timeRangeSeconds: 3600
-  source: metric-server
+  source: metrics-server
   targetRef:
     group: ""
     index: %d

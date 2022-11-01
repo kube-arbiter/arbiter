@@ -1,21 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: observer-metric-server
+  name: observer-plugins
 spec:
   selector:
     matchLabels:
-      app: observer-metric-server
+      app: observer-plugins
   template:
     metadata:
       labels:
-        app: observer-metric-server
+        app: observer-plugins
     spec:
       containers:
         - command:
-            - observer-metric-server
-          image: kubearbiter/observer-metric-server:v0.1.0
-          name: metric-server-plugin
+            - default-plugins
+            - -address=http://prometheus-server.kube-system.svc.cluster.local
+            - -v=4
+          image: kubearbiter/observer-default-plugins:v0.1.0
+          name: observer-plugins
           livenessProbe:
             exec:
               command: ["/bin/sh", "-c", "echo 'hello'|nc local:/var/run/observer.sock"]

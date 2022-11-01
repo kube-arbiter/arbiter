@@ -1,15 +1,15 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Values.observer.prometheusServer.nameOverride }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ .Values.observer.nameOverride }}
+  namespace: {{ .Release.Namespace }} 
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
   revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app: {{ .Values.observer.prometheusServer.nameOverride }}
+      app: {{ .Values.observer.nameOverride }}
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -18,14 +18,15 @@ spec:
   template:
     metadata:
       labels:
-        app: {{ .Values.observer.prometheusServer.nameOverride }}
+        app: {{ .Values.observer.nameOverride }}
     spec:
       containers:
         - command:
-            - observer-prometheus-server
-            - -address={{ .Values.observer.prometheusServer.address }}
-          image: {{ .Values.observer.prometheusServer.image.serverImage }}
-          imagePullPolicy: {{ .Values.observer.prometheusServer.image.pullPolicy }}
+            - default-plugins
+            - -address={{ .Values.observer.address }}
+            - -v=4
+          image: {{ .Values.observer.image.serverImage }}
+          imagePullPolicy: {{ .Values.observer.image.pullPolicy }}
           name: server
           livenessProbe:
             exec:
@@ -39,8 +40,8 @@ spec:
               name: sock-volume
         - command:
             - observer
-          image:  {{ .Values.observer.prometheusServer.image.observerImage }}
-          imagePullPolicy: {{ .Values.observer.prometheusServer.image.pullPolicy }}
+          image: {{ .Values.observer.image.observerImage }}
+          imagePullPolicy: {{ .Values.observer.image.pullPolicy }}
           name: obi-controller
           resources:
           {{ toYaml .Values.observer.resources | nindent 12 }}
