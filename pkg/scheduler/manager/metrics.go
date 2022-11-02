@@ -22,20 +22,24 @@ import (
 	"github.com/kube-arbiter/arbiter/pkg/apis/v1alpha1"
 )
 
-type MetricData map[string]*FullMetrics
-
-type PodWithMetric struct {
-	Pod    *v1.Pod    `json:"raw"`
-	Metric MetricData `json:"metric"`
+type OBI struct {
+	Metric map[string]FullMetrics `json:"metric"` // Metric is a map, key is metric type
 }
 
-type NodeWithMetric struct {
-	Node   *v1.Node   `json:"raw"`
-	Metric MetricData `json:"metric"`
+type PodWithOBI struct {
+	Pod v1.Pod         `json:"raw"`
+	OBI map[string]OBI `json:"obi"` // OBI is a map, key is obi name
+}
+
+type NodeWithOBI struct {
+	Node   v1.Node        `json:"raw"`
+	CPUReq int64          `json:"cpuReq"`
+	MemReq int64          `json:"memReq"`
+	OBI    map[string]OBI `json:"obi"` // OBI is a map, key is obi name
 }
 
 type FullMetrics struct {
-	*v1alpha1.ObservabilityIndicantStatusMetricInfo
+	v1alpha1.ObservabilityIndicantStatusMetricInfo
 	Avg float64 `json:"avg"`
 	Max float64 `json:"max"`
 	Min float64 `json:"min"`

@@ -21,13 +21,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
 	"github.com/dop251/goja_nodejs/require"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/json"
 	"k8s.io/client-go/tools/cache"
@@ -35,22 +33,15 @@ import (
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/framework/plugins/helper"
 
-	"github.com/kube-arbiter/arbiter/pkg/apis/v1alpha1"
 	"github.com/kube-arbiter/arbiter/pkg/generated/clientset/versioned"
 	informers "github.com/kube-arbiter/arbiter/pkg/generated/informers/externalversions"
 	"github.com/kube-arbiter/arbiter/pkg/scheduler/manager"
 )
 
 const (
-	Name           = "Arbiter"
-	LogPrefix      = "[arbiter] "
-	DebugLogic     = `console.log("[arbiter]", "pod:", JSON.stringify(pod), "node:", JSON.stringify(node));`
-	PredictedRatio = 0.6
-	PreLogic       = `var node = JSON.parse(JSON.stringify(node));
-node.raw.status.capacity.cpus = nodeCpus;
-node.raw.status.capacity.memory = nodeMemory;
-
-`
+	Name       = "Arbiter"
+	LogPrefix  = "[arbiter] "
+	DebugLogic = `console.log("[arbiter]", "pod:", JSON.stringify(pod), "node:", JSON.stringify(node));`
 )
 
 var (
@@ -111,60 +102,60 @@ func (ex *Arbiter) score(ctx context.Context, state *framework.CycleState, pod *
 	console.Enable(vm)
 	vm.SetFieldNameMapper(goja.TagFieldNameMapper("json", true))
 
-	podMetric, err := ex.manager.GetPodMetric(ctx, pod)
+	podOBI, err := ex.manager.GetPodOBI(ctx, pod)
 	if err != nil {
-		klog.Warningf(LogPrefix+"GetPodMetric failed,pod:%#v use default value instead", klog.KObj(pod))
+		klog.Warningf(LogPrefix+"GetPodMetric failed, pod:%#v use default value instead", klog.KObj(pod))
 	}
 	node := nodeInfo.Node()
-	nodeMetric, err := ex.manager.GetNodeMetric(ctx, node)
+	nodeOBI, err := ex.manager.GetNodeOBI(ctx, node.Name)
 	if err != nil {
-		klog.Warningf(LogPrefix+"GetNodeMetric failed,node:%#v use default value instead", klog.KObj(node))
+		klog.Warningf(LogPrefix+"GetNodeOBI failed, node:%#v use default value instead", klog.KObj(node))
 	}
-	podWithMetric := GetDefaultPodMetric(pod, podMetric)
+	podWithOBI := &manager.PodWithOBI{Pod: *pod, OBI: podOBI}
 
 	/*
 		same with node
 	*/
-	pt, err := json.Marshal(podWithMetric)
+	pt, err := json.Marshal(podWithOBI)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"pod json.Marshal error", "pod", klog.KObj(podWithMetric.Pod))
-		klog.V(5).ErrorS(err, LogPrefix+"pod json.Marshal error", "podWithMetric", podWithMetric)
+		klog.ErrorS(err, LogPrefix+"pod json.Marshal error", "pod", klog.KObj(&podWithOBI.Pod))
+		klog.V(5).ErrorS(err, LogPrefix+"pod json.Marshal error", "podWithOBI", podWithOBI)
 		return ex.backToDefaultScore(ctx, state, pod, nodeName)
 	}
 	var po map[string]interface{}
 	if err = json.Unmarshal(pt, &po); err != nil {
-		klog.ErrorS(err, LogPrefix+"pod json.Unmarshal error", "pod", klog.KObj(podWithMetric.Pod))
-		klog.V(5).ErrorS(err, LogPrefix+"pod json.Marshal error", "podWithMetric", podWithMetric)
+		klog.ErrorS(err, LogPrefix+"pod json.Unmarshal error", "pod", klog.KObj(&podWithOBI.Pod))
+		klog.V(5).ErrorS(err, LogPrefix+"pod json.Marshal error", "podWithOBI", podWithOBI)
 		return ex.backToDefaultScore(ctx, state, pod, nodeName)
 	}
 
 	err = vm.Set("pod", po)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"js vm set pod get err", "logic", logic, "pod", klog.KObj(podWithMetric.Pod))
-		klog.V(5).ErrorS(err, LogPrefix+"js vm set pod get err", "logic", logic, "podWithMetric", podWithMetric)
+		klog.ErrorS(err, LogPrefix+"js vm set pod get err", "logic", logic, "pod", klog.KObj(&podWithOBI.Pod))
+		klog.V(5).ErrorS(err, LogPrefix+"js vm set pod get err", "logic", logic, "podWithOBI", podWithOBI)
 		return ex.backToDefaultScore(ctx, state, pod, nodeName)
 	}
-	nodeWithMetric := GetDefaultNodeMetric(node, nodeMetric)
+	nodeWithOBI := manager.NodeWithOBI{Node: *node, OBI: nodeOBI, CPUReq: nodeInfo.NonZeroRequested.MilliCPU, MemReq: nodeInfo.NonZeroRequested.Memory}
 
 	/*
 		try to resolve 'node.Status.Capacity cant import' issue.
 	*/
-	t, err := json.Marshal(nodeWithMetric)
+	t, err := json.Marshal(nodeWithOBI)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"node json.Marshal error", "node", klog.KObj(nodeWithMetric.Node))
-		klog.V(5).ErrorS(err, LogPrefix+"node json.Marshal error", "nodeWithMetric", nodeWithMetric)
+		klog.ErrorS(err, LogPrefix+"node json.Marshal error", "node", klog.KObj(&nodeWithOBI.Node))
+		klog.V(5).ErrorS(err, LogPrefix+"node json.Marshal error", "nodeWithOBI", nodeWithOBI)
 		return ex.backToDefaultScore(ctx, state, pod, nodeName)
 	}
 	var no map[string]interface{}
 	if err = json.Unmarshal(t, &no); err != nil {
-		klog.ErrorS(err, LogPrefix+"node json.Unmarshal error", "node", klog.KObj(nodeWithMetric.Node))
-		klog.V(5).ErrorS(err, LogPrefix+"node json.Unmarshal error", "nodeWithMetric", nodeWithMetric)
+		klog.ErrorS(err, LogPrefix+"node json.Unmarshal error", "node", klog.KObj(&nodeWithOBI.Node))
+		klog.V(5).ErrorS(err, LogPrefix+"node json.Unmarshal error", "nodeWithOBI", nodeWithOBI)
 		return ex.backToDefaultScore(ctx, state, pod, nodeName)
 	}
 
 	err = vm.Set("node", no)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"js vm set node get err", "logic", logic, "node", klog.KObj(nodeWithMetric.Node))
+		klog.ErrorS(err, LogPrefix+"js vm set node get err", "logic", logic, "node", klog.KObj(&nodeWithOBI.Node))
 		klog.V(5).ErrorS(err, LogPrefix+"js vm set node get err", "logic", logic, "node Unmarshal", no)
 		return ex.backToDefaultScore(ctx, state, pod, nodeName)
 	}
@@ -199,81 +190,23 @@ func (ex *Arbiter) score(ctx context.Context, state *framework.CycleState, pod *
 	defer func() {
 		if r := recover(); r != nil {
 			if err, ok := r.(error); ok {
-				klog.ErrorS(err, LogPrefix+"Score js logic get panic", "logic", logic, "pod", klog.KObj(podWithMetric.Pod), "node", nodeName)
-				klog.V(5).ErrorS(err, LogPrefix+"Score js logic get panic", "logic", logic, "podWithMetric", podWithMetric, "node", nodeName)
+				klog.ErrorS(err, LogPrefix+"Score js logic get panic", "logic", logic, "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName)
+				klog.V(5).ErrorS(err, LogPrefix+"Score js logic get panic", "logic", logic, "podWithOBI", podWithOBI, "node", nodeName)
 			} else {
-				klog.ErrorS(fmt.Errorf("panic"), LogPrefix+"Score js logic get panic", "logic", logic, "pod", klog.KObj(podWithMetric.Pod), "node", nodeName, "panic", r)
-				klog.V(5).ErrorS(fmt.Errorf("panic"), LogPrefix+"Score js logic get panic", "logic", logic, "podWithMetric", podWithMetric, "node", nodeName, "panic", r)
+				klog.ErrorS(fmt.Errorf("panic"), LogPrefix+"Score js logic get panic", "logic", logic, "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "panic", r)
+				klog.V(5).ErrorS(fmt.Errorf("panic"), LogPrefix+"Score js logic get panic", "logic", logic, "podWithOBI", podWithOBI, "node", nodeName, "panic", r)
 			}
 			score, newState = ex.backToDefaultScore(ctx, state, pod, nodeName)
 		}
 	}()
 	score = int64(fn())
 	klog.V(10).InfoS(LogPrefix+"all finish", "score", score, "nodeName", node.Name, "podName", pod.Name)
+	if score < 0 || score > 100 {
+		msg := fmt.Sprintf("arbiter-Scheduler returns an invalid score %d, it should in the range of [%v, %v]", score, framework.MinNodeScore, framework.MaxNodeScore)
+		klog.ErrorS(errors.New(msg), msg, "score", score)
+		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+	}
 	return score, nil
-}
-
-func GetDefaultPodMetric(pod *v1.Pod, metric manager.MetricData) manager.PodWithMetric {
-	if len(metric) != 0 {
-		return manager.PodWithMetric{Pod: pod, Metric: metric}
-	}
-	var cpu, mem int64
-	for _, container := range pod.Spec.Containers {
-		if container.Resources.Limits.Cpu() != nil {
-			cpu += container.Resources.Limits.Cpu().MilliValue()
-		}
-		if cpu == 0 {
-			cpu = 100
-		}
-		if container.Resources.Limits.Memory() != nil {
-			mem += container.Resources.Limits.Memory().Value()
-		}
-		if mem == 0 {
-			mem = 100 * 1024 * 1024
-		}
-	}
-	return manager.PodWithMetric{Pod: pod, Metric: manager.MetricData{
-		"mem": &manager.FullMetrics{
-			ObservabilityIndicantStatusMetricInfo: &v1alpha1.ObservabilityIndicantStatusMetricInfo{},
-			Avg:                                   float64(mem) * PredictedRatio,
-			Max:                                   float64(mem) * PredictedRatio,
-			Min:                                   float64(mem) * PredictedRatio,
-		},
-		"cpu": &manager.FullMetrics{
-			ObservabilityIndicantStatusMetricInfo: &v1alpha1.ObservabilityIndicantStatusMetricInfo{},
-			Avg:                                   float64(cpu) * PredictedRatio,
-			Max:                                   float64(cpu) * PredictedRatio,
-			Min:                                   float64(cpu) * PredictedRatio,
-		},
-	}}
-}
-
-func GetDefaultNodeMetric(node *v1.Node, metric manager.MetricData) manager.NodeWithMetric {
-	if len(metric) != 0 {
-		klog.V(10).InfoS("node has obi metrics, use it.", "node", node)
-		return manager.NodeWithMetric{Node: node, Metric: metric}
-	}
-	var cpu, mem int64 = 2000, 4 * 1024 * 1024 * 1024
-	if node.Status.Capacity.Memory() != nil {
-		mem = node.Status.Capacity.Memory().Value()
-	}
-	if node.Status.Capacity.Cpu() != nil {
-		cpu = node.Status.Capacity.Cpu().MilliValue()
-	}
-	return manager.NodeWithMetric{Node: node, Metric: manager.MetricData{
-		"mem": &manager.FullMetrics{
-			ObservabilityIndicantStatusMetricInfo: &v1alpha1.ObservabilityIndicantStatusMetricInfo{StartTime: metav1.NewTime(time.Now().Add(time.Hour * -1)), EndTime: metav1.NewTime(time.Now().Add(time.Hour))},
-			Avg:                                   float64(mem) * PredictedRatio,
-			Max:                                   float64(mem) * PredictedRatio,
-			Min:                                   float64(mem) * PredictedRatio,
-		},
-		"cpu": &manager.FullMetrics{
-			ObservabilityIndicantStatusMetricInfo: &v1alpha1.ObservabilityIndicantStatusMetricInfo{StartTime: metav1.NewTime(time.Now().Add(time.Hour * -1)), EndTime: metav1.NewTime(time.Now().Add(time.Hour))},
-			Avg:                                   float64(cpu) * PredictedRatio,
-			Max:                                   float64(cpu) * PredictedRatio,
-			Min:                                   float64(cpu) * PredictedRatio,
-		},
-	}}
 }
 
 func (ex *Arbiter) ScoreExtensions() framework.ScoreExtensions {
@@ -296,7 +229,6 @@ func New(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) 
 	observabilityIndicantInformer := informerFactory.Arbiter().V1alpha1().ObservabilityIndicants()
 	podInformer := handle.SharedInformerFactory().Core().V1().Pods()
 	nodeInformer := handle.SharedInformerFactory().Core().V1().Nodes()
-	replicaSetInformer := handle.SharedInformerFactory().Apps().V1().ReplicaSets()
 
 	mgr := manager.NewManager(client, handle.SnapshotSharedLister(), podInformer, nodeInformer)
 	plugin := &Arbiter{
@@ -317,11 +249,6 @@ func New(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) 
 		AddFunc:    mgr.ObservabilityIndicantAdd,
 		UpdateFunc: mgr.ObservabilityIndicantUpdate,
 		DeleteFunc: mgr.ObservabilityIndicantDelete,
-	})
-	replicaSetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    mgr.RsAdd,
-		UpdateFunc: mgr.RsUpdate,
-		DeleteFunc: mgr.RsDelete,
 	})
 	informerFactory.Start(ctx.Done())
 	if !cache.WaitForCacheSync(ctx.Done(), scoreInformer.Informer().HasSynced) {

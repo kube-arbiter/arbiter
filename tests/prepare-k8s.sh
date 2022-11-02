@@ -120,7 +120,7 @@ spec:
         - --bind-address=127.0.0.1
         - --kubeconfig=/etc/kubernetes/scheduler.conf
         - --config=/etc/kubernetes/kube-scheduler-arbiter-config.yaml
-        - --v=4
+        - --v=10
       image: localhost:5001/arbiter.k8s.com.cn/scheduler:latest
       imagePullPolicy: IfNotPresent
       livenessProbe:

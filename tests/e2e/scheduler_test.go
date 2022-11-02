@@ -224,10 +224,7 @@ spec:
 		})
 	})
 	Describe("schedule pod by node real cost", Label("base", "quick"), Serial, func() {
-		// TODO(Abirdcfly): It seems that in some kubernetes versions the data obtained by the prometheus
-		// in the kind cluster is not the data of the kubernetes node, more analysis is needed,
-		// so pause this test first
-		It("schedule with obi get data from prometheus", FlakeAttempts(3), Pending, func() {
+		It("schedule with obi get data from prometheus", func() {
 			const (
 				DeployCostCPUName = "test-cost-cpu-load"
 				DeployCostCPU     = `apiVersion: apps/v1
@@ -289,30 +286,107 @@ metadata:
   namespace: kube-system
 spec:
   logic: |
+    const NodeCPUOBI = new Map([['arbiter-e2e-control-plane', 'default-prometheus-node-cpu-0'], ['arbiter-e2e-worker', 'default-prometheus-node-cpu-1'],]);
+    const NodeMemOBI = new Map([['arbiter-e2e-control-plane', 'default-prometheus-node-mem-0'], ['arbiter-e2e-worker', 'default-prometheus-node-mem-1'],]);
+
+    function getPodCpuMemReq() {
+        const DefaultCPUReq = 100; // 0.1 core
+        const DefaultMemReq = 200 * 1024 * 1024; // 200MB
+        var podContainer = pod.raw.spec.containers;
+        if (podContainer == undefined) {
+            return [DefaultCPUReq, DefaultMemReq];
+        }
+        var cpuReq = 0;
+        var memReq = 0;
+        for (var i = 0; i < podContainer.length; i++) {
+            var resources = podContainer[i].resources;
+            if (resources.requests == undefined) {
+                cpuReq += DefaultCPUReq;
+                memReq += DefaultMemReq;
+                continue
+            }
+            cpuReq += cpuParser(resources.requests.cpu);
+            memReq += memParser(resources.requests.memory);
+        }
+        var podInitContainers = pod.raw.spec.initContainers;
+        if (podInitContainers == undefined) {
+            return [cpuReq, memReq];
+        }
+        var initCPUReq = 0;
+        var initMemReq = 0;
+        for (var i = 0; i < podInitContainers.length; i++) {
+            var resources = podInitContainers[i].resources;
+            if (resources.requests == undefined) {
+                initCPUReq = DefaultCPUReq;
+                initMemReq = DefaultMemReq;
+            } else {
+                initCPUReq = cpuParser(resources.requests.cpu);
+            }
+            if (initCPUReq > cpuReq) {
+                cpuReq = initCPUReq;
+            }
+            if (initMemReq > memReq) {
+                memReq = initMemReq;
+            }
+        }
+        return [cpuReq, memReq];
+    }
+
+    function cpuParser(input) {
+        const milliMatch = input.match(/^([0-9]+)m$/);
+        if (milliMatch) {
+            return milliMatch[1];
+        }
+
+        return parseFloat(input) * 1000;
+    }
+
+    function memParser(input) {
+        const memoryMultipliers = {
+            k: 1000, M: 1000 ** 2, G: 1000 ** 3, Ki: 1024, Mi: 1024 ** 2, Gi: 1024 ** 3,
+        };
+        const unitMatch = input.match(/^([0-9]+)([A-Za-z]{1,2})$/);
+        if (unitMatch) {
+            return parseInt(unitMatch[1], 10) * memoryMultipliers[unitMatch[2]];
+        }
+
+        return parseInt(input, 10);
+    }
+
     function score() {
-        if (node.raw == undefined || node.raw.status == undefined || node.raw.status.capacity == undefined
-            || node.raw.metadata == undefined || node.raw.metadata.name == undefined) {
-            console.error('[Arbiter-js] cant find node manifest');
-            return 0;
-        }
-        var name = node.raw.metadata.name;
-        var capacity = node.raw.status.capacity;
-        if (capacity.cpu == undefined) {
-            console.error('[Arbiter-js]  cant find node cpu capacity in capacity', name);
-            return 0;
-        }
-        var cpuTotal = capacity.cpu * 1000;
-        var cpuAvg = cpuTotal * 0.5; // same with obi, default value from capacity
-        console.log('[Arbiter-js] cpuAvg', cpuAvg);
-        if (node.metric == undefined || node.metric.cpu == undefined || node.metric.cpu.avg == undefined) {
-            console.error('[Arbiter-js] cant find node cpu metric', name);
+        // Feel free to modify this score function to suit your needs.
+        // This score function replaces the default score function in the scheduling framework.
+        // It inputs the pod and node to be scheduled, and outputs a number (usually 0 to 100).
+        // The higher the number, the more the pod tends to be scheduled to this node.
+        // The current example shows the scoring based on the actual cpu usage of the node.
+        var req = getPodCpuMemReq();
+        var podCPUReq = req[0];
+        var podMemReq = req[1];
+        var nodeName = node.raw.metadata.name;
+        var capacity = node.raw.status.allocatable;
+        var cpuCap = cpuParser(capacity.cpu);
+        var memCap = memParser(capacity.memory);
+        var cpuUsed = node.cpuReq;
+        var memUsed = node.memReq;
+        var cpuReal = node.obi[NodeCPUOBI.get(nodeName)].metric.cpu;
+        if (cpuReal == undefined || cpuReal.avg == undefined) {
+            console.error('[arbiter-js] cant find node cpu metric', nodeName);
         } else {
-            cpuAvg = node.metric.cpu.avg;  // if has metric, use metric instead
-            console.log('[Arbiter-js] cpuAvg', cpuAvg);
+            cpuUsed = cpuReal.avg;  // if has metric, use metric instead
         }
-        var cpuScore = (cpuTotal - cpuAvg) / cpuTotal;
-        console.log('[Arbiter-js] cpuScore:', cpuScore, 'nodeName', name, 'cpuTotal', cpuTotal, 'cpuAvg', cpuAvg);
-        return cpuScore * 100;
+        var memReal = node.obi[NodeMemOBI.get(nodeName)].metric.memory;
+        if (memReal == undefined || memReal.avg == undefined) {
+            console.error('[arbiter-js] cant find node mem metric', nodeName);
+        } else {
+            memUsed = memReal.avg;  // if has metric, use metric instead
+        }
+        console.log('[arbiter-js] cpuUsed', cpuUsed);
+        // LeastAllocated
+        var cpuScore = (cpuCap - cpuUsed - podCPUReq) / cpuCap;
+        console.log('[arbiter-js] cpuScore:', cpuScore, 'nodeName', nodeName, 'cpuCap', cpuCap, 'cpuUsed', cpuUsed, 'podCPUReq', podCPUReq);
+        var memScore = (memCap - memUsed - podMemReq) / memCap;
+        console.log('[arbiter-js] memScore:', memScore, 'nodeName', nodeName, 'memCap', memCap, 'memUsed', memUsed, 'podMemReq', podMemReq);
+        return (cpuScore + memScore) / 2 * 100;
     }
 `
 				OBITemplate = `
@@ -330,17 +404,46 @@ spec:
       cpu:
         aggregations: []
         description: cpu
-        query: (sum(count(node_cpu_seconds_total{mode="idle",node="{{.metadata.name}}"})
-          by (mode, cpu)) - sum(irate(node_cpu_seconds_total{mode="idle",node="{{.metadata.name}}"}[5m])))*1000
+        query: sum(irate(container_cpu_usage_seconds_total{instance="{{.metadata.name}}"}[5m])) /2 *1000
         unit: m
-    timeRangeSeconds: 3600
+    timeRangeSeconds: 600
   source: prometheus
   targetRef:
     group: ""
     index: %d
     kind: Node
     labels:
-      kubernetes.io/os: linux
+      "data-test": "data-test"
+    version: v1
+status:
+  conditions: []
+  phase: ""
+  metrics: {}
+---
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: ObservabilityIndicant
+metadata:
+  name: prometheus-node-mem-%d
+spec:
+  metric:
+    historyLimit: 1
+    metricIntervalSeconds: 30
+    metrics:
+      memory:
+        aggregations: []
+        description: memory
+        query: sum(node_memory_MemTotal_bytes{node="{{.metadata.name}}"} - node_memory_MemAvailable_bytes{node="{{.metadata.name}}"})
+        unit: byte
+    timeRangeSeconds: 600
+  source: prometheus
+  targetRef:
+    group: ""
+    index: %d
+    kind: Node
+    labels:
+      "data-test": "data-test"
+    name: ""
+    namespace: ""
     version: v1
 status:
   conditions: []
@@ -354,7 +457,7 @@ status:
 				Expect(DeleteDeploy(DeployBusyBoxMulName, DeployNamespace, TimeOutSecond)).Should(Succeed())
 				Expect(DeleteByYaml(ScoreYaml, TimeOutSecond)).Error().Should(Succeed())
 				for i := 0; i < nodesNum; i++ {
-					Expect(DeleteByYaml(fmt.Sprintf(OBITemplate, i, i), TimeOutSecond)).Error().Should(Succeed())
+					Expect(DeleteByYaml(fmt.Sprintf(OBITemplate, i, i, i, i), TimeOutSecond)).Error().Should(Succeed())
 				}
 			})
 			By("1. Create a pod on a node that consumes almost all cpu, with cpu request of 100m")
@@ -367,9 +470,8 @@ status:
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond))
 			Expect(err).Error().Should(Succeed(),
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond))
-			By("2. wait 600s to make prometheus get data", func() { time.Sleep(600 * time.Second) })
 
-			By("3. Get total node numbers")
+			By("2. Get total node numbers")
 			allNodeNames, err := GetNodeNameByLabel("", TimeOutSecond)
 			Expect(allNodeNames).ShouldNot(BeZero(),
 				DescribeNode("", TimeOutSecond))
@@ -377,9 +479,9 @@ status:
 				DescribeNode("", TimeOutSecond))
 			nodesNum = len(strings.Split(allNodeNames, " "))
 
-			By("4. Create node OBI to get node metrics")
+			By("3. Create node OBI to get node metrics")
 			for i := 0; i < nodesNum; i++ {
-				Expect(CreateByYaml(fmt.Sprintf(OBITemplate, i, i), TimeOutSecond)).Error().Should(Succeed())
+				Expect(CreateByYaml(fmt.Sprintf(OBITemplate, i, i, i, i), TimeOutSecond)).Error().Should(Succeed())
 			}
 			Eventually(
 				func() (string, error) {
@@ -387,13 +489,13 @@ status:
 				}).
 				WithTimeout(5 * TimeOutSecond * time.Second).WithPolling(10 * time.Second).ShouldNot(BeZero())
 
-			By("5. Create a busybox deploy with replicas = 2 * nodeNums")
+			By("4. Create a busybox deploy with replicas = 2 * nodeNums")
 			Expect(
 				CreateByYaml(fmt.Sprintf(DeployBusyBoxMul, nodesNum*2), TimeOutSecond)).
 				Error().Should(Succeed(),
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond))
 
-			By("6. Make sure busybox be distributed in all nodes.")
+			By("5. Make sure busybox be distributed in all nodes.")
 			nodeName, err := GetPodNodeName(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond)
 			Expect(nodeName).ShouldNot(BeZero(),
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond))
@@ -406,8 +508,10 @@ status:
 			Expect(len(nodeNameKey)).Should(Equal(nodesNum),
 				DescribeNode("", TimeOutSecond))
 
-			By("7. Enable cpu load-aware scheduling")
+			By("6. Enable cpu load-aware scheduling")
 			Expect(CreateByYaml(ScoreYaml, TimeOutSecond)).Error().Should(Succeed())
+
+			By("7. wait 600s to make prometheus obi update data", func() { time.Sleep(600 * time.Second) })
 
 			By("8. Delete busybox all pod to make them reschedule")
 			Expect(
@@ -430,12 +534,12 @@ status:
 			Expect(allPodsReScheduleToLowCPUNode).Should(BeTrue(),
 				"%s\n\n%s\n\n%s\n\n%s",
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond),
-				DescribeOBI(DeployNamespace, "test=node-cpu-load-aware", TimeOutSecond),
+				ShowOBI(DeployNamespace, "test=node-cpu-load-aware", TimeOutSecond),
 				TopNode(TimeOutSecond),
 				TopPod(TimeOutSecond),
 			)
 		})
-		It("schedule with obi get data from metrics-server", FlakeAttempts(3), func() {
+		It("schedule with obi get data from metrics-server", func() {
 			const (
 				DeployCostCPUName = "test-cost-cpu-load-ms"
 				DeployCostCPU     = `apiVersion: apps/v1
@@ -497,37 +601,114 @@ metadata:
   namespace: kube-system
 spec:
   logic: |
+    const NodeCPUOBI = new Map([['arbiter-e2e-control-plane', 'default-metrics-server-node-cpu-0'], ['arbiter-e2e-worker', 'default-metrics-server-node-cpu-1'],]);
+    const NodeMemOBI = new Map([['arbiter-e2e-control-plane', 'default-metrics-server-node-mem-0'], ['arbiter-e2e-worker', 'default-metrics-server-node-mem-1'],]);
+
+    function getPodCpuMemReq() {
+        const DefaultCPUReq = 100; // 0.1 core
+        const DefaultMemReq = 200 * 1024 * 1024; // 200MB
+        var podContainer = pod.raw.spec.containers;
+        if (podContainer == undefined) {
+            return [DefaultCPUReq, DefaultMemReq];
+        }
+        var cpuReq = 0;
+        var memReq = 0;
+        for (var i = 0; i < podContainer.length; i++) {
+            var resources = podContainer[i].resources;
+            if (resources.requests == undefined) {
+                cpuReq += DefaultCPUReq;
+                memReq += DefaultMemReq;
+                continue
+            }
+            cpuReq += cpuParser(resources.requests.cpu);
+            memReq += memParser(resources.requests.memory);
+        }
+        var podInitContainers = pod.raw.spec.initContainers;
+        if (podInitContainers == undefined) {
+            return [cpuReq, memReq];
+        }
+        var initCPUReq = 0;
+        var initMemReq = 0;
+        for (var i = 0; i < podInitContainers.length; i++) {
+            var resources = podInitContainers[i].resources;
+            if (resources.requests == undefined) {
+                initCPUReq = DefaultCPUReq;
+                initMemReq = DefaultMemReq;
+            } else {
+                initCPUReq = cpuParser(resources.requests.cpu);
+            }
+            if (initCPUReq > cpuReq) {
+                cpuReq = initCPUReq;
+            }
+            if (initMemReq > memReq) {
+                memReq = initMemReq;
+            }
+        }
+        return [cpuReq, memReq];
+    }
+
+    function cpuParser(input) {
+        const milliMatch = input.match(/^([0-9]+)m$/);
+        if (milliMatch) {
+            return milliMatch[1];
+        }
+
+        return parseFloat(input) * 1000;
+    }
+
+    function memParser(input) {
+        const memoryMultipliers = {
+            k: 1000, M: 1000 ** 2, G: 1000 ** 3, Ki: 1024, Mi: 1024 ** 2, Gi: 1024 ** 3,
+        };
+        const unitMatch = input.match(/^([0-9]+)([A-Za-z]{1,2})$/);
+        if (unitMatch) {
+            return parseInt(unitMatch[1], 10) * memoryMultipliers[unitMatch[2]];
+        }
+
+        return parseInt(input, 10);
+    }
+
     function score() {
-        if (node.raw == undefined || node.raw.status == undefined || node.raw.status.capacity == undefined
-            || node.raw.metadata == undefined || node.raw.metadata.name == undefined) {
-            console.error('[Arbiter-js] cant find node manifest');
-            return 0;
-        }
-        var name = node.raw.metadata.name;
-        var capacity = node.raw.status.capacity;
-        if (capacity.cpu == undefined) {
-            console.error('[Arbiter-js]  cant find node cpu capacity in capacity', name);
-            return 0;
-        }
-        var cpuTotal = capacity.cpu * 1000;
-        var cpuAvg = cpuTotal * 0.5; // same with obi, default value from capacity
-        console.log('[Arbiter-js] cpuAvg', cpuAvg);
-        if (node.metric == undefined || node.metric.cpu == undefined || node.metric.cpu.avg == undefined) {
-            console.error('[Arbiter-js] cant find node cpu metric', name);
+        // Feel free to modify this score function to suit your needs.
+        // This score function replaces the default score function in the scheduling framework.
+        // It inputs the pod and node to be scheduled, and outputs a number (usually 0 to 100).
+        // The higher the number, the more the pod tends to be scheduled to this node.
+        // The current example shows the scoring based on the actual cpu usage of the node.
+        var req = getPodCpuMemReq();
+        var podCPUReq = req[0];
+        var podMemReq = req[1];
+        var nodeName = node.raw.metadata.name;
+        var capacity = node.raw.status.allocatable;
+        var cpuCap = cpuParser(capacity.cpu);
+        var memCap = memParser(capacity.memory);
+        var cpuUsed = node.cpuReq;
+        var memUsed = node.memReq;
+        var cpuReal = node.obi[NodeCPUOBI.get(nodeName)].metric.cpu;
+        if (cpuReal == undefined || cpuReal.avg == undefined) {
+            console.error('[arbiter-js] cant find node cpu metric', nodeName);
         } else {
-            cpuAvg = node.metric.cpu.avg;  // if has metric, use metric instead
-            console.log('[Arbiter-js] cpuAvg', cpuAvg);
+            cpuUsed = cpuReal.avg;  // if has metric, use metric instead
         }
-        var cpuScore = (cpuTotal - cpuAvg) / cpuTotal;
-        console.log('[Arbiter-js] cpuScore:', cpuScore, 'nodeName', name, 'cpuTotal', cpuTotal, 'cpuAvg', cpuAvg);
-        return cpuScore * 100;
+        var memReal = node.obi[NodeMemOBI.get(nodeName)].metric.memory;
+        if (memReal == undefined || memReal.avg == undefined) {
+            console.error('[arbiter-js] cant find node mem metric', nodeName);
+        } else {
+            memUsed = memReal.avg;  // if has metric, use metric instead
+        }
+        console.log('[arbiter-js] cpuUsed', cpuUsed);
+        // LeastAllocated
+        var cpuScore = (cpuCap - cpuUsed - podCPUReq) / cpuCap;
+        console.log('[arbiter-js] cpuScore:', cpuScore, 'nodeName', nodeName, 'cpuCap', cpuCap, 'cpuUsed', cpuUsed, 'podCPUReq', podCPUReq);
+        var memScore = (memCap - memUsed - podMemReq) / memCap;
+        console.log('[arbiter-js] memScore:', memScore, 'nodeName', nodeName, 'memCap', memCap, 'memUsed', memUsed, 'podMemReq', podMemReq);
+        return (cpuScore + memScore) / 2 * 100;
     }
 `
 				OBITemplate = `
 apiVersion: arbiter.k8s.com.cn/v1alpha1
 kind: ObservabilityIndicant
 metadata:
-  name: metric-server-node-cpu-%d
+  name: metrics-server-node-cpu-%d
   labels:
     test: node-cpu-load-aware-ms
 spec:
@@ -541,7 +722,40 @@ spec:
         description: ""
         query: ""
         unit: 'm'
-    timeRangeSeconds: 3600
+    timeRangeSeconds: 600
+  source: metrics-server
+  targetRef:
+    group: ""
+    index: %d
+    kind: Node
+    labels:
+      data-test: data-test
+    name: ""
+    namespace: ""
+    version: v1
+status:
+  conditions: []
+  phase: ""
+  metrics: {}
+---
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: ObservabilityIndicant
+metadata:
+  name: metrics-server-node-mem-%d
+  labels:
+    test: node-cpu-load-aware-ms
+spec:
+  metric:
+    historyLimit: 1
+    metricIntervalSeconds: 30
+    metrics:
+      memory:
+        aggregations:
+        - time
+        description: ""
+        query: ""
+        unit: "byte"
+    timeRangeSeconds: 600
   source: metrics-server
   targetRef:
     group: ""
@@ -564,7 +778,7 @@ status:
 				Expect(DeleteDeploy(DeployBusyBoxMulName, DeployNamespace, TimeOutSecond)).Should(Succeed())
 				Expect(DeleteByYaml(ScoreYaml, TimeOutSecond)).Error().Should(Succeed())
 				for i := 0; i < nodesNum; i++ {
-					Expect(DeleteByYaml(fmt.Sprintf(OBITemplate, i, i), TimeOutSecond)).Error().Should(Succeed())
+					Expect(DeleteByYaml(fmt.Sprintf(OBITemplate, i, i, i, i), TimeOutSecond)).Error().Should(Succeed())
 				}
 			})
 			By("1. Create a pod on a node that consumes almost all cpu, with cpu request of 100m")
@@ -578,9 +792,7 @@ status:
 			Expect(err).Error().Should(Succeed(),
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond))
 
-			By("2. wait 600s to make metrics-server and obi get data", func() { time.Sleep(600 * time.Second) })
-
-			By("3. Get total node numbers")
+			By("2. Get total node numbers")
 			allNodeNames, err := GetNodeNameByLabel("", TimeOutSecond)
 			Expect(allNodeNames).ShouldNot(BeZero(),
 				DescribeNode("", TimeOutSecond))
@@ -588,9 +800,9 @@ status:
 				DescribeNode("", TimeOutSecond))
 			nodesNum = len(strings.Split(allNodeNames, " "))
 
-			By("4. Create node OBI to get node metrics")
+			By("3. Create node OBI to get node metrics")
 			for i := 0; i < nodesNum; i++ {
-				Expect(CreateByYaml(fmt.Sprintf(OBITemplate, i, i), TimeOutSecond)).Error().Should(Succeed())
+				Expect(CreateByYaml(fmt.Sprintf(OBITemplate, i, i, i, i), TimeOutSecond)).Error().Should(Succeed())
 			}
 			Eventually(
 				func() (string, error) {
@@ -598,13 +810,13 @@ status:
 				}).
 				WithTimeout(5 * TimeOutSecond * time.Second).WithPolling(10 * time.Second).ShouldNot(BeZero())
 
-			By("5. Create a busybox deploy with replicas = 2 * nodeNums")
+			By("4. Create a busybox deploy with replicas = 2 * nodeNums")
 			Expect(
 				CreateByYaml(fmt.Sprintf(DeployBusyBoxMul, nodesNum*2), TimeOutSecond)).
 				Error().Should(Succeed(),
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond))
 
-			By("6. Make sure busybox be distributed in all nodes.")
+			By("5. Make sure busybox be distributed in all nodes.")
 			nodeName, err := GetPodNodeName(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond)
 			Expect(nodeName).ShouldNot(BeZero(),
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond))
@@ -617,8 +829,10 @@ status:
 			Expect(len(nodeNameKey)).Should(Equal(nodesNum),
 				DescribeNode("", TimeOutSecond))
 
-			By("7. Enable cpu load-aware scheduling")
+			By("6. Enable cpu load-aware scheduling")
 			Expect(CreateByYaml(ScoreYaml, TimeOutSecond)).Error().Should(Succeed())
+
+			By("7. wait 600s to make metrics-server and obi get data", func() { time.Sleep(600 * time.Second) })
 
 			By("8. Delete busybox all pod to make them reschedule")
 			Expect(
@@ -641,7 +855,7 @@ status:
 			Expect(allPodsReScheduleToLowCPUNode).Should(BeTrue(),
 				"%s\n\n%s\n\n%s\n\n%s",
 				DescribePod(DeployBusyBoxMulName, DeployNamespace, "", TimeOutSecond),
-				DescribeOBI(DeployNamespace, "test=node-cpu-load-aware-ms", TimeOutSecond),
+				ShowOBI(DeployNamespace, "test=node-cpu-load-aware-ms", TimeOutSecond),
 				TopNode(TimeOutSecond),
 				TopPod(TimeOutSecond),
 			)
