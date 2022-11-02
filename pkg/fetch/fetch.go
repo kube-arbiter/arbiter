@@ -71,15 +71,15 @@ func (r ResourceNameWithKind) String() string {
 
 type Fetcher interface {
 	Fetch(context.Context, *obi.GetMetricsRequest) (*v1alpha1.ObservabilityIndicantStatusMetricInfo, FetchErrorType, error)
-	GetPluginName() string
+	GetPluginNames() map[string]struct{}
 	Health() bool
 }
 
 type fetcher struct {
-	rpcCli        obi.ServerClient
-	timeout       time.Duration
-	capabilities  map[string]*obi.MetricInfo
-	outPluginName string
+	rpcCli         obi.ServerClient
+	timeout        time.Duration
+	capabilities   map[string]*obi.PluginCapability
+	outPluginNames []string
 }
 
 // verify fetcher impl Fetcher
@@ -88,31 +88,28 @@ var _ Fetcher = &fetcher{}
 func NewFetcher(conn *grpc.ClientConn, fetchTimeout time.Duration) (Fetcher, error) {
 	f := &fetcher{rpcCli: obi.NewServerClient(conn), timeout: fetchTimeout}
 	// try to connect to observer plugin
-	retryCount := 1
 	var capabilitiers *obi.PluginCapabilitiesResponse
 	var err error
-	for {
+	for try := 0; try < MaximumConnectRetryCount; try++ {
 		capabilitiers, err = f.rpcCli.PluginCapabilities(context.Background(), &obi.PluginCapabilitiesRequest{})
-		if err != nil {
-			klog.Errorf("NewFetcher: try to get capabilities error: %s\n", err)
-			time.Sleep(5 * time.Second)
-			retryCount++
-			if retryCount > MaximumConnectRetryCount {
-				return f, err
-			}
-		} else {
+		if err == nil {
 			break
 		}
+		klog.Errorf("NewFetcher: try to get capabilities error: %s\n", err)
+		time.Sleep(5 * time.Second)
+	}
+	if err != nil {
+		return f, err
 	}
 
-	f.capabilities = capabilitiers.MetricInfo
-	r, err := f.rpcCli.GetPluginName(context.Background(), &obi.GetPluginNameRequest{})
+	f.capabilities = capabilitiers.Capabilities
+	r, err := f.rpcCli.GetPluginNames(context.Background(), &obi.GetPluginNameRequest{})
 	if err != nil {
 		klog.Infof("NewFetcher: try to get plugin name error: %s\n", err)
 		return f, err
 	}
-	klog.Infof("NewFetcher plugin name: %s\n", r.Name)
-	f.outPluginName = r.Name
+	klog.Infof("NewFetcher plugin name: %v\n", r.Names)
+	f.outPluginNames = r.Names
 	return f, nil
 }
 
@@ -120,17 +117,33 @@ func (f *fetcher) Health() bool {
 	return true
 }
 
-func (f *fetcher) GetPluginName() string {
-	return f.outPluginName
+func (f *fetcher) GetPluginNames() map[string]struct{} {
+	pluginNames := make(map[string]struct{})
+	for _, name := range f.outPluginNames {
+		pluginNames[name] = struct{}{}
+	}
+
+	return pluginNames
 }
 
 func (f *fetcher) Fetch(ctx context.Context, req *obi.GetMetricsRequest) (*v1alpha1.ObservabilityIndicantStatusMetricInfo, FetchErrorType, error) {
 	method := "fetcher.Fetch"
 
 	klog.V(5).Infof("Starting to fetch metrics for resource: %s\n", req.ResourceNames)
-	fetchResult := make(chan error)
+
+	// If the logic does not go to get data from the fetchResult channel, it will cause a goroutine leak.
+	// So unbuffered channels cannot be used here
+	fetchResult := make(chan error, 1)
 
 	ans := &v1alpha1.ObservabilityIndicantStatusMetricInfo{}
+	for idx, pluginName := range f.outPluginNames {
+		if req.Source == pluginName {
+			break
+		}
+		if idx == len(f.outPluginNames)-1 {
+			return ans, FetchDoNothing, fmt.Errorf("plugin %s not found", req.Source)
+		}
+	}
 
 	go func(ans *v1alpha1.ObservabilityIndicantStatusMetricInfo) {
 		metricResp, err := f.rpcCli.GetMetrics(ctx, req)
