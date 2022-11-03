@@ -168,10 +168,13 @@ github.com/dop251/goja/unistring
 github.com/dop251/goja_nodejs/console
 github.com/dop251/goja_nodejs/require
 github.com/dop251/goja_nodejs/util
-# github.com/emicklei/go-restful v2.9.5+incompatible
+# github.com/emicklei/go-restful v2.15.0+incompatible
 ## explicit
 github.com/emicklei/go-restful
 github.com/emicklei/go-restful/log
+# github.com/emicklei/go-restful-swagger12 v0.0.0-20201014110547-68ccff494617
+## explicit
+github.com/emicklei/go-restful-swagger12
 # github.com/esimonov/ifshort v1.0.4
 ## explicit; go 1.17
 github.com/esimonov/ifshort/pkg/analyzer
@@ -222,10 +225,10 @@ github.com/go-logr/zapr
 # github.com/go-openapi/jsonpointer v0.19.5
 ## explicit; go 1.13
 github.com/go-openapi/jsonpointer
-# github.com/go-openapi/jsonreference v0.19.5
+# github.com/go-openapi/jsonreference v0.19.6
 ## explicit; go 1.13
 github.com/go-openapi/jsonreference
-# github.com/go-openapi/swag v0.19.14
+# github.com/go-openapi/swag v0.19.15
 ## explicit; go 1.11
 github.com/go-openapi/swag
 # github.com/go-sourcemap/sourcemap v2.1.3+incompatible
@@ -1923,20 +1926,23 @@ k8s.io/gengo/generator
 k8s.io/gengo/namer
 k8s.io/gengo/parser
 k8s.io/gengo/types
-# k8s.io/klog/v2 v2.30.0
+# k8s.io/klog/v2 v2.40.1
 ## explicit; go 1.13
 k8s.io/klog/v2
 k8s.io/klog/v2/klogr
-# k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65
+# k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf
 ## explicit; go 1.16
+k8s.io/kube-openapi/cmd/openapi-gen
 k8s.io/kube-openapi/cmd/openapi-gen/args
 k8s.io/kube-openapi/pkg/builder
 k8s.io/kube-openapi/pkg/builder3
 k8s.io/kube-openapi/pkg/common
+k8s.io/kube-openapi/pkg/common/restfuladapter
 k8s.io/kube-openapi/pkg/generators
 k8s.io/kube-openapi/pkg/generators/rules
 k8s.io/kube-openapi/pkg/handler
 k8s.io/kube-openapi/pkg/handler3
+k8s.io/kube-openapi/pkg/internal/handler
 k8s.io/kube-openapi/pkg/schemaconv
 k8s.io/kube-openapi/pkg/schemamutation
 k8s.io/kube-openapi/pkg/spec3
@@ -2030,10 +2036,22 @@ k8s.io/kubernetes/pkg/volume/util/recyclerclient
 k8s.io/kubernetes/pkg/volume/util/subpath
 k8s.io/kubernetes/pkg/volume/util/types
 k8s.io/kubernetes/pkg/volume/util/volumepathhandler
+# k8s.io/metrics v0.23.10 => k8s.io/metrics v0.23.10
+## explicit; go 1.16
+k8s.io/metrics/pkg/apis/custom_metrics
+k8s.io/metrics/pkg/apis/custom_metrics/install
+k8s.io/metrics/pkg/apis/custom_metrics/v1beta1
+k8s.io/metrics/pkg/apis/custom_metrics/v1beta2
+k8s.io/metrics/pkg/apis/external_metrics
+k8s.io/metrics/pkg/apis/external_metrics/install
+k8s.io/metrics/pkg/apis/external_metrics/v1beta1
+k8s.io/metrics/pkg/apis/metrics
+k8s.io/metrics/pkg/apis/metrics/install
+k8s.io/metrics/pkg/apis/metrics/v1beta1
 # k8s.io/mount-utils v0.23.10 => k8s.io/mount-utils v0.23.10
 ## explicit; go 1.16
 k8s.io/mount-utils
-# k8s.io/utils v0.0.0-20211116205334-6203023598ed
+# k8s.io/utils v0.0.0-20211208161948-7d6a63dca704
 ## explicit; go 1.12
 k8s.io/utils/buffer
 k8s.io/utils/clock
@@ -2118,6 +2136,19 @@ sigs.k8s.io/controller-runtime/pkg/webhook
 sigs.k8s.io/controller-runtime/pkg/webhook/admission
 sigs.k8s.io/controller-runtime/pkg/webhook/conversion
 sigs.k8s.io/controller-runtime/pkg/webhook/internal/metrics
+# sigs.k8s.io/custom-metrics-apiserver v1.23.0
+## explicit; go 1.17
+sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver
+sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver/endpoints/handlers
+sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver/installer
+sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver/registry/rest
+sigs.k8s.io/custom-metrics-apiserver/pkg/cmd
+sigs.k8s.io/custom-metrics-apiserver/pkg/cmd/server
+sigs.k8s.io/custom-metrics-apiserver/pkg/dynamicmapper
+sigs.k8s.io/custom-metrics-apiserver/pkg/provider
+sigs.k8s.io/custom-metrics-apiserver/pkg/provider/helpers
+sigs.k8s.io/custom-metrics-apiserver/pkg/registry/custom_metrics
+sigs.k8s.io/custom-metrics-apiserver/pkg/registry/external_metrics
 # sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6
 ## explicit; go 1.16
 sigs.k8s.io/json
@@ -2203,6 +2234,9 @@ sigs.k8s.io/kustomize/kyaml/yaml/merge2
 sigs.k8s.io/kustomize/kyaml/yaml/merge3
 sigs.k8s.io/kustomize/kyaml/yaml/schema
 sigs.k8s.io/kustomize/kyaml/yaml/walk
+# sigs.k8s.io/metrics-server v0.6.1
+## explicit; go 1.17
+sigs.k8s.io/metrics-server/pkg/api
 # sigs.k8s.io/structured-merge-diff/v4 v4.2.1
 ## explicit; go 1.13
 sigs.k8s.io/structured-merge-diff/v4/fieldpath

@@ -1,0 +1,160 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arbiter-metrics-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: arbiter-metrics-apiserver
+  namespace: arbiter-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-adapter-apiserver
+  namespace: arbiter-system
+  labels:
+    app: metrics-adapter-apiserver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-adapter-apiserver
+  template:
+    metadata:
+      labels:
+        app: metrics-adapter-apiserver
+    spec:
+      tolerations:
+      - key: beta.kubernetes.io/arch
+        value: arm
+        effect: NoSchedule
+      - key: beta.kubernetes.io/arch
+        value: arm64
+        effect: NoSchedule
+      serviceAccountName: arbiter-metrics-apiserver
+      containers:
+      - name: metrics-adapter-apiserver
+        image: 172.22.50.223/arbiter/arbiter-metric-apiserver:v0.2.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --logtostderr=true
+        - --secure-port=6443
+        ports:
+        - containerPort: 6443
+        securityContext:
+          runAsUser: 0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: obi-adapter-api
+  namespace: arbiter-system
+spec:
+  ports:
+  - port: 443
+    targetPort: 6443
+  selector:
+    app: metrics-adapter-apiserver
+---
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1beta1.external.metrics.k8s.io
+spec:
+  insecureSkipTLSVerify: true
+  group: external.metrics.k8s.io
+  groupPriorityMinimum: 1000
+  versionPriority: 5
+  service:
+    name: obi-adapter-api
+    namespace: arbiter-system
+  version: v1beta1
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: arbiter-metrics:arbiter-system:auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: arbiter-metrics-apiserver
+  namespace: arbiter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: arbiter-metrics-resource-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: arbiter-metrics-resource-reader
+subjects:
+- kind: ServiceAccount
+  name: arbiter-metrics-apiserver
+  namespace: arbiter-system
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: arbiter-metrics-apiserver
+  namespace: arbiter-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arbiter-metrics-resource-reader
+rules:
+- apiGroups:
+  - "arbiter.k8s.com.cn"
+  resources:
+  - observabilityindicants
+  verbs:
+  - get
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arbiter-metrics-resource-reader
+rules:
+- apiGroups:
+  - "arbiter.k8s.com.cn"
+  resources:
+  - observabilityindicants
+  verbs:
+  - get
+  - list
+---
+# Configure access for HPA
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-metrics-hpa-resources
+rules:
+- apiGroups:
+  - external.metrics.k8s.io
+  resources:
+  - '*'
+  verbs:
+  - '*'
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hpa-controller-external-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: external-metrics-hpa-resources
+subjects:
+- kind: ServiceAccount
+  name: horizontal-pod-autoscaler
+  namespace: kube-system

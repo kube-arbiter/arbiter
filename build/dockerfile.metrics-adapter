@@ -1,0 +1,19 @@
+# Build the application
+FROM golang:1.19 as builder
+
+WORKDIR /go/src/github.com/kube-arbiter/arbiter
+COPY . .
+
+#RUN go get -d -v
+
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o obi-metrics-adapter cmd/obi-adapter/main.go
+
+# Run the application
+FROM alpine:latest
+
+# RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+COPY --from=builder /go/src/github.com/kube-arbiter/arbiter/obi-metrics-adapter .
+
+ENTRYPOINT ["./obi-metrics-adapter"]
