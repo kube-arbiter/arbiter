@@ -27,8 +27,7 @@ $ kubectl get po -narbiter-test
 NAME                                          READY   STATUS    RESTARTS   AGE
 arbiter-scheduler                             1/1     Running   0          60s
 executor-74c64d7769-gw7zc                     2/2     Running   0          55s
-observer-metric-server-75ccf6499f-rvv7x       2/2     Running   0          55s
-observer-prometheus-6bbff4d54c-mjp9n          2/2     Running   0          55s
+observer-plugins-75ccf6499f-rvv7x             2/2     Running   0          55s
 ```
 
 ### Configuration
@@ -39,11 +38,11 @@ The following table lists the configurable parameters of the as-a-second-schedul
 | ------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------- |
 | `observer.resources`                        | observer controller resources.              | default request cpu is `500m`, default request memory is `64Mi`. |
 | `observer.serviceAccountName`               | service account name                        | `observability`                                                  |
-| `observer.metricServer.image.observerImage` | observer controller image                   | `kubearbiter/observer:v0.1.0`                                    |
-| `observer.metricServer.image.serverImage`   | the metric server plugin image              | `kubearbiter/arbiter-metric-server:v0.1.0`                       |
-| `observer.metricServer.image.pullPolicy`    | image pull policy                           | `IfNotPresent`                                                   |
-| `observer.metricServer.nameOverride`        | Deploymane name                             | `observer-metric-server`                                         |
-| `observer.prometheusServer.address`         | access address of prometheus in the cluster | `http://prometheus-server.kube-system.svc.cluster.local`         |
+| `observer.image.observerImage`              | observer controller image                   | `kubearbiter/observer:v0.1.0`                                    |
+| `observer.image.serverImage`                | the observer plugins image                  | `kubearbiter/observer-default-plugins:v0.1.0`                    |
+| `observer.image.pullPolicy`                 | image pull policy                           | `IfNotPresent`                                                   |
+| `observer.nameOverride`                     | Deployment name                             | `observer-plugins`                                               |
+| `observer.address`                          | access address of prometheus in the cluster | `http://prometheus-server.kube-system.svc.cluster.local`         |
 | `executor.nameOverride`                     | deployment name for tagging services        | `executor`                                                       |
 | `executor.resources`                        | tagging services resources.                 | default request cpu is `10m`, default request memory is `64Mi`   |
 | `executor.env`                              | Environment Variables                       | `[]`                                                             |
