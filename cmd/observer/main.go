@@ -35,10 +35,10 @@ import (
 	"k8s.io/component-base/version"
 	"k8s.io/klog/v2"
 
-	"github.com/kube-arbiter/arbiter/pkg/controller"
 	"github.com/kube-arbiter/arbiter/pkg/fetch"
 	"github.com/kube-arbiter/arbiter/pkg/generated/clientset/versioned"
 	"github.com/kube-arbiter/arbiter/pkg/generated/informers/externalversions"
+	"github.com/kube-arbiter/arbiter/pkg/observer"
 	"github.com/kube-arbiter/arbiter/pkg/utils"
 )
 
@@ -120,7 +120,7 @@ func main() {
 	if err != nil {
 		klog.Fatalf("%s dial %s error: %s", utils.ErrorLogPrefix, *endpoint, err.Error())
 	}
-	c := controller.NewController(
+	c := observer.NewController(
 		*namespace,
 		kubeClient,
 		dynamicClient,
