@@ -39,7 +39,7 @@ spec:
       serviceAccountName: arbiter-metrics-apiserver
       containers:
       - name: metrics-adapter-apiserver
-        image: 172.22.50.223/arbiter/arbiter-metric-apiserver:v0.2.0
+        image: kubearbiter/metrics-adapter-apiserver:v0.2.0
         imagePullPolicy: IfNotPresent
         args:
         - --logtostderr=true
