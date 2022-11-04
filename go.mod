@@ -18,13 +18,18 @@ require (
 	google.golang.org/protobuf v1.28.0
 	k8s.io/api v0.23.10
 	k8s.io/apimachinery v0.23.10
+	k8s.io/apiserver v0.23.10
 	k8s.io/cli-runtime v0.23.10
 	k8s.io/client-go v0.23.10
 	k8s.io/code-generator v0.23.10
 	k8s.io/component-base v0.23.10
-	k8s.io/klog/v2 v2.30.0
+	k8s.io/klog/v2 v2.40.1
+	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf
 	k8s.io/kubernetes v1.23.10
+	k8s.io/metrics v0.23.10
 	sigs.k8s.io/controller-runtime v0.11.1
+	sigs.k8s.io/custom-metrics-apiserver v1.23.0
+	sigs.k8s.io/metrics-server v0.6.1
 )
 
 require (
@@ -73,7 +78,8 @@ require (
 	github.com/denis-tingaikin/go-header v0.4.3 // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
 	github.com/docker/distribution v2.7.1+incompatible // indirect
-	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
+	github.com/emicklei/go-restful v2.15.0+incompatible // indirect
+	github.com/emicklei/go-restful-swagger12 v0.0.0-20201014110547-68ccff494617 // indirect
 	github.com/esimonov/ifshort v1.0.4 // indirect
 	github.com/ettle/strcase v0.1.1 // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
@@ -89,8 +95,8 @@ require (
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/zapr v1.2.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
-	github.com/go-openapi/jsonreference v0.19.5 // indirect
-	github.com/go-openapi/swag v0.19.14 // indirect
+	github.com/go-openapi/jsonreference v0.19.6 // indirect
+	github.com/go-openapi/swag v0.19.15 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-toolsmith/astcast v1.0.0 // indirect
 	github.com/go-toolsmith/astcopy v1.0.2 // indirect
@@ -270,15 +276,13 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.3.3 // indirect
 	k8s.io/apiextensions-apiserver v0.23.0 // indirect
-	k8s.io/apiserver v0.23.10 // indirect
 	k8s.io/cloud-provider v0.23.10 // indirect
 	k8s.io/component-helpers v0.23.10 // indirect
 	k8s.io/csi-translation-lib v0.23.10 // indirect
 	k8s.io/gengo v0.0.0-20210813121822-485abfe95c7c // indirect
-	k8s.io/kube-openapi v0.0.0-20211115234752-e816edb12b65 // indirect
 	k8s.io/kube-scheduler v0.23.10 // indirect
 	k8s.io/mount-utils v0.23.10 // indirect
-	k8s.io/utils v0.0.0-20211116205334-6203023598ed // indirect
+	k8s.io/utils v0.0.0-20211208161948-7d6a63dca704 // indirect
 	mvdan.cc/gofumpt v0.4.0 // indirect
 	mvdan.cc/interfacer v0.0.0-20180901003855-c20040233aed // indirect
 	mvdan.cc/lint v0.0.0-20170908181259-adc824a0674b // indirect
