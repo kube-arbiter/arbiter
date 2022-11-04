@@ -72,8 +72,8 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version-file: 'go.mod'
-      - name: Install ginkgo v2.2.0
-        run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.2.0
+      - name: Install ginkgo v2.4.0
+        run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.4.0
 # Kind 0.15.0 has preinstalled in github action
 # see https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software for more info
 #      - name: Install kind v0.15.0
