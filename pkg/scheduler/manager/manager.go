@@ -25,9 +25,7 @@ import (
 	"sync"
 
 	gocache "github.com/patrickmn/go-cache"
-	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	informerv1 "k8s.io/client-go/informers/core/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
@@ -52,19 +50,18 @@ var (
 
 type Manager1 interface {
 	GetScoreSpec(ctx context.Context) string
-	GetPodMetric(ctx context.Context, pod *v1.Pod) (metric MetricData, err error)
-	GetNodeMetric(ctx context.Context, node *v1.Node) (metric MetricData, err error)
+	GetPodOBI(ctx context.Context, pod *v1.Pod) (obi map[string]OBI, err error)
+	GetNodeOBI(ctx context.Context, nodeName string) (obi map[string]OBI, err error)
 }
 
 type Manager struct {
 	client clientset.Interface
 
-	// TODO(Abirdcfly): should benchmark gocache
-	podMetric  *gocache.Cache
-	nodeMetric *gocache.Cache
+	// TODO(Abirdcfly): should benchmark gocache or replace with other struct
+	podMetric  map[string]*gocache.Cache
+	nodeMetric map[string]*gocache.Cache
 	scheduler  *gocache.Cache
 	score      *gocache.Cache
-	rsToDeploy *gocache.Cache
 
 	// snapshotSharedLister is pod shared list
 	snapshotSharedLister framework.SharedLister
@@ -75,25 +72,28 @@ type Manager struct {
 	nodeLister listerv1.NodeLister
 }
 
-func (mgr *Manager) GetPodMetric(ctx context.Context, pod *v1.Pod) (metric MetricData, err error) {
+func (mgr *Manager) GetPodOBI(ctx context.Context, pod *v1.Pod) (obi map[string]OBI, err error) {
 	// TODO(Abirdcfly): pod metric support will in v0.2.0
 	return
 }
 
-func (mgr *Manager) GetNodeMetric(ctx context.Context, node *v1.Node) (metric MetricData, err error) {
-	data, ok := mgr.nodeMetric.Get(metav1.NamespaceDefault + "/" + node.Name)
+func (mgr *Manager) GetNodeOBI(ctx context.Context, nodeName string) (obi map[string]OBI, err error) {
+	nodeCache, ok := mgr.nodeMetric[nodeName]
 	if !ok {
-		klog.V(4).ErrorS(ErrNotFoundInCache, "Failed to get nodeMetric", "nodeName", node.Name)
-		return nil, ErrNotFoundInCache
+		err = ErrNotFoundInCache
+		klog.V(4).ErrorS(err, "Failed to get node OBI", "nodeName", nodeName)
+		return
 	}
-	metric, ok = data.(MetricData)
-	if !ok {
-		klog.V(4).ErrorS(ErrTypeAssertion, "Failed to get nodeMetric", "data", data)
-		return nil, ErrTypeAssertion
-	}
-	if len(metric) == 0 {
-		klog.V(4).ErrorS(ErrNoData, "Cache has key, but no data", "data", data)
-		return nil, ErrNoData
+	obi = make(map[string]OBI, nodeCache.ItemCount())
+	for k, v := range nodeCache.Items() {
+		data, ok := v.Object.(OBI)
+		if ok {
+			obi[k] = data
+		} else {
+			err = ErrNotFoundInCache
+			klog.V(4).ErrorS(err, "Failed to get node OBI", "nodeName", nodeName)
+			return
+		}
 	}
 	return
 }
@@ -101,11 +101,10 @@ func (mgr *Manager) GetNodeMetric(ctx context.Context, node *v1.Node) (metric Me
 func NewManager(client clientset.Interface, snapshotSharedLister framework.SharedLister, podInformer informerv1.PodInformer, nodeInformer informerv1.NodeInformer) *Manager {
 	pgMgr := &Manager{
 		client:               client,
-		podMetric:            gocache.New(gocache.NoExpiration, gocache.NoExpiration),
-		nodeMetric:           gocache.New(gocache.NoExpiration, gocache.NoExpiration),
+		podMetric:            make(map[string]*gocache.Cache),
+		nodeMetric:           make(map[string]*gocache.Cache),
 		scheduler:            gocache.New(gocache.NoExpiration, gocache.NoExpiration),
 		score:                gocache.New(gocache.NoExpiration, gocache.NoExpiration),
-		rsToDeploy:           gocache.New(gocache.NoExpiration, gocache.NoExpiration),
 		snapshotSharedLister: snapshotSharedLister,
 		podLister:            podInformer.Lister(),
 		nodeLister:           nodeInformer.Lister(),
@@ -142,7 +141,7 @@ func (mgr *Manager) GetScoreSpec(ctx context.Context) (logic string) {
 }
 
 func (mgr *Manager) ScoreAdd(obj interface{}) {
-	klog.V(10).Infof("[%s] get new Score", ManagerLogPrefix)
+	klog.V(10).Infof("%s get new Score", ManagerLogPrefix)
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
 		runtime.HandleError(err)
@@ -161,12 +160,12 @@ func (mgr *Manager) ScoreAdd(obj interface{}) {
 }
 
 func (mgr *Manager) ScoreUpdate(old interface{}, new interface{}) {
-	klog.V(10).Infof("[%s] get update Score", ManagerLogPrefix)
+	klog.V(10).Infof("%s get update Score", ManagerLogPrefix)
 	mgr.ScoreAdd(new)
 }
 
 func (mgr *Manager) ScoreDelete(obj interface{}) {
-	klog.V(10).Infof("[%s] get delete Score", ManagerLogPrefix)
+	klog.V(10).Infof("%s get delete Score", ManagerLogPrefix)
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
 		runtime.HandleError(err)
@@ -236,6 +235,7 @@ func (mgr *Manager) ObservabilityIndicantAdd(obj interface{}) {
 		klog.V(5).ErrorS(ErrTypeAssertion, ManagerLogPrefix+"Failed to get observability indicant", "obj", obj)
 		return
 	}
+	klog.V(10).Infoln(ManagerLogPrefix+"get new ObservabilityIndicant", "obi", *obi)
 	expiration := gocache.NoExpiration
 	if len(obi.Status.Metrics) == 0 {
 		klog.V(5).ErrorS(ErrNoData, ManagerLogPrefix+"obi have no data", "obi", klog.KObj(obi))
@@ -244,64 +244,101 @@ func (mgr *Manager) ObservabilityIndicantAdd(obj interface{}) {
 	var cacheName *gocache.Cache
 	switch {
 	case IsResourceNode(obi.Spec.TargetRef):
-		cacheName = mgr.nodeMetric
-	case IsResourcePod(obi.Spec.TargetRef):
-		cacheName = mgr.podMetric
+		nodeName := obi.Spec.TargetRef.Name
+		if nodeName == "" {
+			for _, m := range obi.Status.Metrics {
+				if len(m) == 0 {
+					return
+				}
+				nodeName = m[0].TargetItem
+				break
+			}
+			if nodeName == "" {
+				return
+			}
+		}
+		if _, ok := mgr.nodeMetric[nodeName]; !ok {
+			mgr.nodeMetric[nodeName] = gocache.New(gocache.NoExpiration, gocache.NoExpiration)
+		}
+		cacheName = mgr.nodeMetric[nodeName]
+	// case IsResourcePod(obi.Spec.TargetRef):
+	//	cacheName = mgr.podMetric
 	default:
 		klog.V(5).ErrorS(ErrNotFoundInCache, ManagerLogPrefix+"Failed to get cacheName", "TargetRef", obi.Spec.TargetRef)
 		return
 	}
 	cacheKey := getMetricCacheKey(obi)
 	/*
-		{
-			"metrics": {
-				"cpu": [
-					{
-						"endTime": "2022-09-01T10:36:57Z",
-						"records": [
-							{
-								"timestamp": 1662024960000,
-								"value": "0.470097"
-							},
-							{
-								"timestamp": 1662025020000,
-								"value": "0.466142"
-							}
-						],
-						"startTime": "2022-09-01T09:36:57Z",
-						"targetItem": "cpu-cost-1-7db7f54cdd-fnh8k",
-						"unit": "C"
-					}
-				]
-		    }
-		}
+		Structure of a typical obi:
+			{
+				"metrics": {
+					"cpu": [
+						{
+							"endTime": "2022-09-01T10:36:57Z",
+							"records": [
+								{
+									"timestamp": 1662024960000,
+									"value": "0.470097"
+								},
+								{
+									"timestamp": 1662025020000,
+									"value": "0.466142"
+								}
+							],
+							"startTime": "2022-09-01T09:36:57Z",
+							"targetItem": "cpu-cost-1-7db7f54cdd-fnh8k",
+							"unit": "C"
+						}
+					]
+			    }
+			}
+		Extending the structure of obi:
+			{
+			    "metrics": {
+			        "cpu": [
+			            {
+			                "endTime": "2022-10-31T01:31:27Z",
+			                "records": [
+			                    {
+			                        "timestamp": 1666949661719,
+			                        "value": "[{\"metric\":{},\"values\":[[1666949631.719,\"14.25\"]]}]"
+			                    },
+			                    {
+			                        "timestamp": 1667177547324,
+			                        "value": "[]"
+			                    }
+			                ],
+			                "startTime": "2022-10-31T01:30:57Z",
+			                "unit": "m"
+			            }
+			        ]
+			    }
+			}
 	*/
-	var metricData MetricData
-	if data, ok := cacheName.Get(cacheKey); ok {
-		metricData, ok = data.(MetricData)
+	var data OBI
+	if d, ok := cacheName.Get(cacheKey); ok {
+		data, ok = d.(OBI)
 		if !ok {
 			klog.V(5).ErrorS(errors.New("get data err"), ManagerLogPrefix+"get data err")
-			metricData = make(map[string]*FullMetrics)
+			data = OBI{Metric: make(map[string]FullMetrics)}
 		}
 	} else {
-		metricData = make(map[string]*FullMetrics)
+		data = OBI{Metric: make(map[string]FullMetrics)}
 	}
 	metrics := obi.Status.Metrics
-	hasRecords := false
 	for metricType, metricInfo := range metrics {
 		// metricType cpu mem ...
-		if _, exist := (metricData)[metricType]; !exist {
-			(metricData)[metricType] = new(FullMetrics)
+		if _, exist := (data.Metric)[metricType]; !exist {
+			(data.Metric)[metricType] = FullMetrics{}
 		}
-		v := (metricData)[metricType]
+		v := (data.Metric)[metricType]
 		if len(metricInfo) == 0 {
 			continue
 		}
-		v.ObservabilityIndicantStatusMetricInfo = metricInfo[0].DeepCopy()
+		v.ObservabilityIndicantStatusMetricInfo = *metricInfo[0].DeepCopy()
 		if len(v.ObservabilityIndicantStatusMetricInfo.Records) == 0 {
 			continue
 		}
-		hasRecords = true
 		v.Max, v.Min, v.Avg = 0, 0, 0
 		var i int
 		var sum float64
@@ -321,12 +358,10 @@ func (mgr *Manager) ObservabilityIndicantAdd(obj interface{}) {
 			i++
 		}
 		v.Avg = sum / float64(i)
+		(data.Metric)[metricType] = v
 	}
-	if !hasRecords {
-		klog.V(5).ErrorS(ErrNoData, ManagerLogPrefix+"has no records", "obi", klog.KObj(obi))
-		return
-	}
-	cacheName.Set(cacheKey, metricData, expiration)
+	klog.V(10).InfoS("add obi to cache", "obi", klog.KObj(obi), "cacheKey", cacheKey)
+	cacheName.Set(cacheKey, data, expiration)
 }
 
 func (mgr *Manager) ObservabilityIndicantUpdate(old interface{}, new interface{}) {
@@ -341,65 +376,24 @@ func (mgr *Manager) ObservabilityIndicantDelete(obj interface{}) {
 		klog.ErrorS(errors.New("cant convert to observability indicant"), ManagerLogPrefix+"cant convert to observability indicant", "obj", obj)
 		return
 	}
-	cacheKey := getMetricCacheKey(obi)
-	// TODO(Abirdcfly): optimize deletion
-	mgr.podMetric.Delete(cacheKey)
-}
-
-func (mgr *Manager) RsAdd(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(err)
-		return
-	}
-	rs, ok := obj.(*appsv1.ReplicaSet)
-	if !ok {
-		klog.V(5).ErrorS(errors.New("cant convert to replica set"), "cant convert to replica set", "obj", obj)
-		return
-	}
-	ownerReferences := rs.OwnerReferences
-	if len(ownerReferences) == 0 {
-		return
-	}
-	deployName := ""
-	for _, ownerReference := range ownerReferences {
-		if ownerReference.Kind == "Deployment" {
-			deployName = ownerReference.Name
-			break
+	switch {
+	case IsResourceNode(obi.Spec.TargetRef):
+		nodeName := obi.Spec.TargetRef.Name
+		if nodeName == "" {
+			return
 		}
-	}
-	if deployName == "" {
+		delete(mgr.nodeMetric, nodeName)
+	case IsResourcePod(obi.Spec.TargetRef):
+		return
+	default:
 		return
 	}
-	mgr.rsToDeploy.Set(key, deployName, gocache.NoExpiration)
-}
-
-func (mgr *Manager) RsUpdate(old interface{}, new interface{}) {
-	mgr.RsAdd(new)
-}
-
-func (mgr *Manager) RsDelete(obj interface{}) {
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(err)
-		return
-	}
-	mgr.rsToDeploy.Delete(key)
 }
 
 func getMetricCacheKey(obi *schedv1alpha1.ObservabilityIndicant) string {
-	ns := obi.Spec.TargetRef.Namespace
-	if ns == "" {
-		ns = metav1.NamespaceDefault
-	}
-	name := obi.Spec.TargetRef.Name
-	for _, v := range obi.Status.Metrics {
-		if len(v) == 0 {
-			continue
-		}
-		name = v[0].TargetItem
-	}
-	return ns + "/" + name
+	ns := obi.Namespace
+	name := obi.Name
+	return ns + "-" + name
 }
 
 func IsResourceNode(o schedv1alpha1.ObservabilityIndicantSpecTargetRef) bool {

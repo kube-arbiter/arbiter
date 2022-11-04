@@ -13,13 +13,13 @@ cd "${ROOT_PATH}"
 echo "codegen start."
 echo "tools install..."
 
-GO111MODULE=on go install k8s.io/code-generator/cmd/deepcopy-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/register-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/client-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/lister-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/informer-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/conversion-gen@v0.24.2
-GO111MODULE=on go install k8s.io/code-generator/cmd/defaulter-gen@v0.24.2
+GO111MODULE=on go install k8s.io/code-generator/cmd/deepcopy-gen@v0.23.10
+GO111MODULE=on go install k8s.io/code-generator/cmd/register-gen@v0.23.10
+GO111MODULE=on go install k8s.io/code-generator/cmd/client-gen@v0.23.10
+GO111MODULE=on go install k8s.io/code-generator/cmd/lister-gen@v0.23.10
+GO111MODULE=on go install k8s.io/code-generator/cmd/informer-gen@v0.23.10
+GO111MODULE=on go install k8s.io/code-generator/cmd/conversion-gen@v0.23.10
+GO111MODULE=on go install k8s.io/code-generator/cmd/defaulter-gen@v0.23.10
 
 echo "Generating with deepcopy-gen..."
 deepcopy-gen \

@@ -96,13 +96,21 @@ func GetByJSONPath(resource, namespace, label, jsonpath string, timeoutSecond in
 	args := []string{"get", resource, "-n", namespace, "-l", label, "-o", fmt.Sprintf(`jsonpath="%s"`, jsonpath)}
 	return BaseCmd("", "", timeoutSecond, args...)
 }
+func GetYaml(resource, namespace, label string, timeoutSecond int) (out string, err error) {
+	if namespace == "" {
+		namespace = DefaultNamespace
+	}
+	args := []string{"get", resource, "-n", namespace, "-l", label, "-o", "yaml"}
+	return BaseCmd("", "", timeoutSecond, args...)
+}
 
 func DescribePod(deployName, namespace, label string, timeoutSecond int) string {
 	return describe(deployName, namespace, label, "pod", timeoutSecond)
 }
 
-func DescribeOBI(namespace, label string, timeoutSecond int) string {
-	return describe("", namespace, label, "obi", timeoutSecond)
+func ShowOBI(namespace, label string, timeoutSecond int) string {
+	out, _ := GetYaml("obi", namespace, label, timeoutSecond)
+	return out
 }
 
 func DescribeNode(label string, timeoutSecond int) string {
