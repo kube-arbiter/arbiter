@@ -12,7 +12,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.4.0
 	github.com/onsi/gomega v1.22.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
-	github.com/spf13/cobra v1.6.0
+	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
 	google.golang.org/grpc v1.46.2
 	google.golang.org/protobuf v1.28.0
