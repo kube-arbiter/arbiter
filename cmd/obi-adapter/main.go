@@ -21,11 +21,10 @@ import (
 	"fmt"
 	"os"
 
+	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
-
-	openapinamer "k8s.io/apiserver/pkg/endpoints/openapi"
 	customexternalmetrics "sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver"
 	basecmd "sigs.k8s.io/custom-metrics-apiserver/pkg/cmd"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
@@ -39,12 +38,8 @@ import (
 type ArbiterAdapter struct {
 	basecmd.AdapterBase
 
-	// AdapterConfigFile points to the file containing the arbiter configuration.
+	// TODO: AdapterConfigFile points to the file containing the arbiter configuration.
 	AdapterConfigFile string
-	/*// MetricsRelistInterval is the interval at which to relist the set of available metrics
-	MetricsRelistInterval time.Duration
-	// MetricsMaxAge is the period to query available metrics for
-	MetricsMaxAge time.Duration*/
 }
 
 func (cmd *ArbiterAdapter) addFlags() {

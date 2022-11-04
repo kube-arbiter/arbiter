@@ -21,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kube-arbiter/arbiter/pkg/generated/clientset/versioned"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,8 +28,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/external_metrics"
-
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
+
+	"github.com/kube-arbiter/arbiter/pkg/generated/clientset/versioned"
 )
 
 // CustomMetricResource wraps provider.CustomMetricInfo in a struct which stores the Name and Namespace of the resource
@@ -38,18 +38,6 @@ import (
 type CustomMetricResource struct {
 	provider.CustomMetricInfo
 	types.NamespacedName
-}
-
-// externalMetric provides examples for metrics which would otherwise be reported from an external source
-type arbiterExternalMetric struct {
-	info   provider.ExternalMetricInfo
-	labels map[string]string
-	value  external_metrics.ExternalMetricValue
-}
-
-type metricValue struct {
-	labels labels.Set
-	value  resource.Quantity
 }
 
 // arbiterMetricsProvider: external metrics provider for arbiter
