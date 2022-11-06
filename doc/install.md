@@ -32,8 +32,7 @@ Container images are available in the Docker Hub. You can pull and push to your 
 
 ```
 docker pull kubearbiter/observer:v0.1.0
-docker pull kubearbiter/observer-metric-server:v0.1.0
-docker pull kubearbiter/observer-prometheus-server:v0.1.0
+docker pull kubearbiter/observer-default-plugins:v0.1.0
 
 docker pull kubearbiter/executor:v0.1.0
 docker pull kubearbiter/executor-resource-tagger:v0.1.0
@@ -52,9 +51,7 @@ kubectl create ns arbiter-system
 # 1. install observer
 kubectl -n arbiter-system apply -f manifests/install/observer/observer-rbac.yaml
 # Run if use metric-server for metrics service
-kubectl -n arbiter-system apply -f manifests/install/observer/observer-metric-server.yaml
-# Run if use prometheus for metrics service
-kubectl -n arbiter-system apply -f manifests/install/observer/observer-prometheus.yaml
+kubectl -n arbiter-system apply -f manifests/install/observer/observer-plugins.yaml
 # 2. install executor
 kubectl -n arbiter-system apply -f manifests/install/executor
 ```
@@ -96,7 +93,7 @@ spec:
 Update manifests/example/observer/metric/metric-server-pod-cpu.yaml following the description above, and run:
 
 ```
-kubectl apply -f manifests/example/observer/metric/metric-server-pod-cpu.yaml'
+kubectl apply -f manifests/example/observer/metric/metric-server-pod-cpu.yaml
 ```
 
 5. Check results
