@@ -31,7 +31,7 @@ import (
 	"k8s.io/kubernetes/cmd/kube-scheduler/app/options"
 	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 
-	"github.com/kube-arbiter/arbiter/pkg/extend"
+	"github.com/kube-arbiter/arbiter/pkg/scheduler"
 )
 
 func TestSetup(t *testing.T) {
@@ -163,7 +163,7 @@ profiles:
 		{
 			name:            "single profile config - Arbiter",
 			flags:           []string{"--config", ExtendProfilesConfig},
-			registryOptions: []app.Option{app.WithPlugin(extend.Name, extend.New)},
+			registryOptions: []app.Option{app.WithPlugin(scheduler.Name, scheduler.New)},
 			wantPlugins: map[string]map[string][]kubeschedulerconfig.Plugin{
 				"default-scheduler": {
 					"QueueSortPlugin":  defaultPlugins["QueueSortPlugin"],

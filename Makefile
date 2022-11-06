@@ -39,6 +39,10 @@ update:
 verify:
 	@hack/verify-all.sh
 
+.PHONY: golanglint-fix
+golanglint-fix:
+	@hack/fix-golang-lint-error.sh
+
 # Build image.
 #
 # Args:

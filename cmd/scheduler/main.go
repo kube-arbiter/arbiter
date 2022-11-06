@@ -24,7 +24,7 @@ import (
 	"k8s.io/component-base/logs"
 	"k8s.io/kubernetes/cmd/kube-scheduler/app"
 
-	"github.com/kube-arbiter/arbiter/pkg/extend"
+	"github.com/kube-arbiter/arbiter/pkg/scheduler"
 
 	_ "github.com/kube-arbiter/arbiter/pkg/apis/scheme"
 )
@@ -36,7 +36,7 @@ func main() {
 	// Later they can consist of scheduler profile(s) and hence
 	// used by various kinds of workloads.
 	command := app.NewSchedulerCommand(
-		app.WithPlugin(extend.Name, extend.New),
+		app.WithPlugin(scheduler.Name, scheduler.New),
 	)
 
 	// once we switch everything over to Cobra commands, we can go back to calling
