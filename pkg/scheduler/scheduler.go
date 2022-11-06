@@ -50,7 +50,7 @@ var (
 
 type Arbiter struct {
 	frameworkHandler framework.Handle
-	manager          manager.Manager1
+	manager          manager.Manager
 }
 
 var _ framework.PostBindPlugin = &Arbiter{}
