@@ -48,13 +48,13 @@ var (
 	ErrNoData          = errors.New("obi have no data")
 )
 
-type Manager1 interface {
+type Manager interface {
 	GetScoreSpec(ctx context.Context) string
 	GetPodOBI(ctx context.Context, pod *v1.Pod) (obi map[string]OBI, err error)
 	GetNodeOBI(ctx context.Context, nodeName string) (obi map[string]OBI, err error)
 }
 
-type Manager struct {
+type manager struct {
 	client clientset.Interface
 
 	// TODO(Abirdcfly): should benchmark gocache or replace with other struct
@@ -72,12 +72,12 @@ type Manager struct {
 	nodeLister listerv1.NodeLister
 }
 
-func (mgr *Manager) GetPodOBI(ctx context.Context, pod *v1.Pod) (obi map[string]OBI, err error) {
+func (mgr *manager) GetPodOBI(ctx context.Context, pod *v1.Pod) (obi map[string]OBI, err error) {
 	// TODO(Abirdcfly): pod metric support will in v0.2.0
 	return
 }
 
-func (mgr *Manager) GetNodeOBI(ctx context.Context, nodeName string) (obi map[string]OBI, err error) {
+func (mgr *manager) GetNodeOBI(ctx context.Context, nodeName string) (obi map[string]OBI, err error) {
 	nodeCache, ok := mgr.nodeMetric[nodeName]
 	if !ok {
 		err = ErrNotFoundInCache
@@ -98,8 +98,8 @@ func (mgr *Manager) GetNodeOBI(ctx context.Context, nodeName string) (obi map[st
 	return
 }
 
-func NewManager(client clientset.Interface, snapshotSharedLister framework.SharedLister, podInformer informerv1.PodInformer, nodeInformer informerv1.NodeInformer) *Manager {
-	pgMgr := &Manager{
+func NewManager(client clientset.Interface, snapshotSharedLister framework.SharedLister, podInformer informerv1.PodInformer, nodeInformer informerv1.NodeInformer) *manager {
+	pgMgr := &manager{
 		client:               client,
 		podMetric:            make(map[string]*gocache.Cache),
 		nodeMetric:           make(map[string]*gocache.Cache),
@@ -113,7 +113,7 @@ func NewManager(client clientset.Interface, snapshotSharedLister framework.Share
 	return pgMgr
 }
 
-func (mgr *Manager) GetScoreSpec(ctx context.Context) (logic string) {
+func (mgr *manager) GetScoreSpec(ctx context.Context) (logic string) {
 	scoreName, ok := mgr.scheduler.Get("Score")
 	if !ok {
 		klog.ErrorS(ErrNotFoundInCache, "Failed to get scheduler.score")
@@ -140,7 +140,7 @@ func (mgr *Manager) GetScoreSpec(ctx context.Context) (logic string) {
 	return
 }
 
-func (mgr *Manager) ScoreAdd(obj interface{}) {
+func (mgr *manager) ScoreAdd(obj interface{}) {
 	klog.V(10).Infof("%s get new Score", ManagerLogPrefix)
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -159,12 +159,12 @@ func (mgr *Manager) ScoreAdd(obj interface{}) {
 	mgr.score.Set(score.Name, score.Spec.Logic, gocache.NoExpiration)
 }
 
-func (mgr *Manager) ScoreUpdate(old interface{}, new interface{}) {
+func (mgr *manager) ScoreUpdate(old interface{}, new interface{}) {
 	klog.V(10).Infof("%s get update Score", ManagerLogPrefix)
 	mgr.ScoreAdd(new)
 }
 
-func (mgr *Manager) ScoreDelete(obj interface{}) {
+func (mgr *manager) ScoreDelete(obj interface{}) {
 	klog.V(10).Infof("%s get delete Score", ManagerLogPrefix)
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -183,7 +183,7 @@ func (mgr *Manager) ScoreDelete(obj interface{}) {
 	mgr.score.Delete(score.Name)
 }
 
-func (mgr *Manager) SchedulerAdd(obj interface{}) {
+func (mgr *manager) SchedulerAdd(obj interface{}) {
 	klog.V(10).Infof("[%s] get new Scheduler", ManagerLogPrefix)
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -202,12 +202,12 @@ func (mgr *Manager) SchedulerAdd(obj interface{}) {
 	mgr.scheduler.Set("Score", score.Spec.Score, gocache.NoExpiration)
 }
 
-func (mgr *Manager) SchedulerUpdate(old interface{}, new interface{}) {
+func (mgr *manager) SchedulerUpdate(old interface{}, new interface{}) {
 	klog.V(10).Infoln(ManagerLogPrefix + "get update Scheduler")
 	mgr.ScoreAdd(new)
 }
 
-func (mgr *Manager) SchedulerDelete(obj interface{}) {
+func (mgr *manager) SchedulerDelete(obj interface{}) {
 	klog.V(10).Infoln(ManagerLogPrefix + "get delete Scheduler")
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -222,7 +222,7 @@ func (mgr *Manager) SchedulerDelete(obj interface{}) {
 	mgr.scheduler.Flush()
 }
 
-func (mgr *Manager) ObservabilityIndicantAdd(obj interface{}) {
+func (mgr *manager) ObservabilityIndicantAdd(obj interface{}) {
 	klog.V(10).Infoln(ManagerLogPrefix + "get new ObservabilityIndicant")
 	_, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
@@ -364,12 +364,12 @@ func (mgr *Manager) ObservabilityIndicantAdd(obj interface{}) {
 	cacheName.Set(cacheKey, data, expiration)
 }
 
-func (mgr *Manager) ObservabilityIndicantUpdate(old interface{}, new interface{}) {
+func (mgr *manager) ObservabilityIndicantUpdate(old interface{}, new interface{}) {
 	klog.V(10).Infoln(ManagerLogPrefix + "get update ObservabilityIndicant")
 	mgr.ObservabilityIndicantAdd(new)
 }
 
-func (mgr *Manager) ObservabilityIndicantDelete(obj interface{}) {
+func (mgr *manager) ObservabilityIndicantDelete(obj interface{}) {
 	klog.V(10).Infoln(ManagerLogPrefix + "get delete ObservabilityIndicant")
 	obi, ok := obj.(*schedv1alpha1.ObservabilityIndicant)
 	if !ok {
