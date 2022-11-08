@@ -72,19 +72,25 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version-file: 'go.mod'
-      - name: Install ginkgo v2.4.0
-        run: go install github.com/onsi/ginkgo/v2/ginkgo@v2.4.0
-# Kind 0.15.0 has preinstalled in github action
-# see https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software for more info
-#      - name: Install kind v0.15.0
-#        run: go install sigs.k8s.io/kind@v0.15.0
+      - name: Install ginkgo
+        run: |
+          version=$(cat go.mod| grep "ginkgo/v2" | awk '{print $2}')
+          go install -v github.com/onsi/ginkgo/v2/ginkgo@$version
+# Github action will pre-install close to the latest version of Kind,
+# but in our tests, to upgrade the kind version, it is best to verify that the old kubernetes node image is available
+# in the new version of Kind, and it is best to use the updated kubernetes node image provided by the new version of kind.
+# see https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software
+# for more info.
+      - name: Install kind v0.15.0
+        run: go install sigs.k8s.io/kind@v0.15.0
       - name: Install kubectl
         run: |
           curl -LO https://storage.googleapis.com/kubernetes-release/release/${{ matrix.k8s-version }}/bin/linux/amd64/kubectl
           chmod +x ./kubectl
           sudo mv ./kubectl /usr/local/bin/kubectl
-# Helm 3.9.4 has preinstalled in github action
-# see https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software for more info
+# Github action will be pre-installed with the latest version of Helm, our test does not limit the version of Helm.
+# see https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners#preinstalled-software
+# for more info.
 #      - name: Install helm
 #        run: |
 #          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
