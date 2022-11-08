@@ -18,6 +18,7 @@ package e2e_test
 
 import (
 	"fmt"
+	"strconv"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -29,17 +30,24 @@ var _ = Describe("Observer", Label("observer"), func() {
 		It("start to check the number of obi", func() {
 			var output string
 			Expect(countChecker(obiCountCommand(), &output)).Error().Should(Succeed(), func() {
-				fmt.Println("check the number of obi successfully")
+				fmt.Println("failed to check the number of obi")
 			})
 
-			Expect(output == "11").Should(BeTrue())
+			Expect(output == "11").Should(BeTrue(), func() {
+				fmt.Printf("There should be 11 obi, but get %s\n", output)
+			})
 		})
 
 		It("start to check the data of obi", func() {
 			var output string
-			Expect(countChecker(obiDataCommand(), &output)).Error().Should(Succeed())
+			for _, cmd := range obiDataCommand() {
+				Expect(countChecker(cmd, &output)).Error().Should(Succeed(), func() {
+					fmt.Printf("failed to checkobi data by command: %s\n", cmd)
+				})
 
-			Expect(output == "11").Should(BeTrue())
+				i, _ := strconv.Atoi(output)
+				Expect(i >= 2).Should(BeTrue())
+			}
 		})
 
 	})
@@ -50,10 +58,12 @@ var _ = Describe("Executor", Label("executor"), func() {
 		It("start to check the number of ObservabilityActionPolicy", func() {
 			var output string
 			Expect(countChecker(policyCountCommand(), &output)).Error().Should(Succeed(), func() {
-				fmt.Println("check the number of ObservabilityActionPolicy successfully")
+				fmt.Println("failed to check the number of ObservabilityActionPolicy")
 			})
 
-			Expect(output == "8").Should(BeTrue())
+			Expect(output == "8").Should(BeTrue(), func() {
+				fmt.Printf("there should be 8 ObservabilityActionPolicy, but get %s\n", output)
+			})
 		})
 
 		It("start to check data of ObservabilityActionPolicy", func() {
@@ -62,7 +72,6 @@ var _ = Describe("Executor", Label("executor"), func() {
 			for _, cmd := range commands {
 				Expect(countChecker(cmd, &output)).Error().Should(Succeed())
 				Expect(output == "1").Should(BeTrue())
-
 			}
 		})
 	})

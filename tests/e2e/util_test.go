@@ -189,8 +189,17 @@ func obiCountCommand() string {
 	return `kubectl -narbiter-system get obi |grep -v 'NAME'|wc -l`
 }
 
-func obiDataCommand() string {
-	return `kubectl get obi -narbiter-system -oyaml|grep 'records'|wc -l`
+func obiDataCommand() []string {
+	obiNames := []string{"metric-server-pod-cpu", "metric-server-pod-mem", "prometheus-pod-cpu", "prometheus-pod-mem",
+		"metric-server-node-cpu", "metric-server-node-mem", "prometheus-node-cpu", "prometheus-node-mem", "prometheus-cluster-schedulable-cpu",
+		"prometheus-max-available-cpu", "prometheus-rawdata-node-unschedule"}
+	outputTemplate := `kubectl get obi %s -n %s -oyaml | grep 'timestamp' | wc -l`
+	output := make([]string, len(obiNames))
+	for idx, name := range obiNames {
+		output[idx] = fmt.Sprintf(outputTemplate, name, "arbiter-system")
+	}
+
+	return output
 }
 
 func policyCountCommand() string {
