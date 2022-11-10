@@ -1,0 +1,29 @@
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: ObservabilityIndicant
+metadata:
+  name: obi-cpu-metrics
+spec:
+  metric:
+    historyLimit: 1
+    metricIntervalSeconds: 30
+    metrics:
+      cpu:
+        aggregations: []
+        description: cpu
+        query: (sum(rate(container_cpu_usage_seconds_total{namespace="arbiter-system",container="cpu-cost"}[5m])))*1000
+        unit: 'm'
+    timeRangeSeconds: 3600
+  source: prometheus
+  targetRef:
+    group: ""
+    index: 0
+    kind: Pod
+    labels:
+      app: cpu-cost
+    name: ""
+    namespace: arbiter-system
+    version: v1
+status:
+  conditions: []
+  phase: ""
+  metrics: {}

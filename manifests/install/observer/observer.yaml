@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: observer-plugins
+  name: observer-server
 spec:
   selector:
     matchLabels:
-      app: observer-plugins
+      app: observer-server
   template:
     metadata:
       labels:
-        app: observer-plugins
+        app: observer-server
     spec:
       containers:
         - command:
-            - default-plugins
+            - observer-default-plugins
             - -address=http://prometheus-server.kube-system.svc.cluster.local
             - -v=4
-          image: kubearbiter/observer-default-plugins:v0.1.0
+          image: kubearbiter/observer-default-plugins:v0.2.0
           name: observer-plugins
           livenessProbe:
             exec:
@@ -33,8 +33,8 @@ spec:
               name: sock-volume
         - command:
             - observer
-          image: kubearbiter/observer:v0.1.0
-          name: obi-controller
+          image: kubearbiter/observer:v0.2.0
+          name: observer-controller
           resources:
             limits:
               cpu: 1

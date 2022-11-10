@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: executor-resource-tagger
+  name: executor-server
 spec:
   selector:
     matchLabels:
-      arbiter-component: executor-resource-tagger
+      arbiter-component: executor-server
   template:
     metadata:
       labels:
-        arbiter-component: executor-resource-tagger
+        arbiter-component: executor-server
     spec:
       containers:
-        - image: kubearbiter/executor-resource-tagger:v0.1.0
-          name: executor-resource-tagger
+        - image: kubearbiter/executor-default-plugins:v0.2.0
+          name: executor-default-plugins
           resources:
             limits:
               cpu: 1
@@ -28,7 +28,7 @@ spec:
             - -endpoint=/plugins/resourcetagger.sock
           command:
             - /bin/executor
-          image: kubearbiter/executor:v0.1.0
+          image: kubearbiter/executor:v0.2.0
           livenessProbe:
             failureThreshold: 3
             httpGet:

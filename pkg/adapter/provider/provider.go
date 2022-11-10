@@ -18,6 +18,7 @@ package provider
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,20 +26,12 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 	"k8s.io/metrics/pkg/apis/external_metrics"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 
 	"github.com/kube-arbiter/arbiter/pkg/generated/clientset/versioned"
 )
-
-// CustomMetricResource wraps provider.CustomMetricInfo in a struct which stores the Name and Namespace of the resource
-// So that we can accurately store and retrieve the metric as if this were an actual metrics server.
-type CustomMetricResource struct {
-	provider.CustomMetricInfo
-	types.NamespacedName
-}
 
 // arbiterMetricsProvider: external metrics provider for arbiter
 type arbiterMetricsProvider struct {
@@ -84,15 +77,33 @@ func (p *arbiterMetricsProvider) GetExternalMetric(ctx context.Context, namespac
 	}
 	// If it's node or pod, get the gvr object
 	// TODO: label selector will be matched later
+	// WindowSeconds: indicates the window ([Timestamp-Window, Timestamp]) from which these metrics were calculated, when returning rate
+	// metrics calculated from cumulative metrics (or zero for non-calculated instantaneous metrics).
+	// So use 0 for instantaneous metric
+	var metricIntervalWindow int64
 	for metricKey := range obiObject.Spec.Metric.Metrics {
 		if len(obiObject.Status.Metrics[metricKey]) > 0 {
-			// For now, we only use 1st item that has the records
-			for _, record := range obiObject.Status.Metrics[metricKey][0].Records {
+			// For now, we only use 1st item that has the records, and the latest value of records
+			recordLength := len(obiObject.Status.Metrics[metricKey][0].Records)
+			if recordLength > 0 {
+				latestRecord := obiObject.Status.Metrics[metricKey][0].Records[recordLength-1]
 				emv := external_metrics.ExternalMetricValue{}
 				emv.MetricName = info.Metric
-				emv.Value = resource.MustParse(record.Value)
-				emv.Timestamp = metav1.Time{Time: time.UnixMilli(record.Timestamp)}
-				emv.WindowSeconds = &obiObject.Spec.Metric.MetricIntervalSeconds
+				// Skip the empty value
+				if latestRecord.Value != "" {
+					// Get the integer value
+					fValue, err := strconv.ParseFloat(latestRecord.Value, 64)
+					if err != nil {
+						klog.Errorf("error while parsing float value %s", latestRecord.Value)
+						continue
+					}
+					stringValue := strconv.Itoa(int(fValue))
+					emv.Value = resource.MustParse(stringValue + obiObject.Status.Metrics[metricKey][0].Unit)
+				} else {
+					klog.Warningf("found empty metrics value")
+				}
+				emv.Timestamp = metav1.Time{Time: time.UnixMilli(latestRecord.Timestamp)}
+				emv.WindowSeconds = &metricIntervalWindow
 				matchingMetrics = append(matchingMetrics, emv)
 			}
 		}

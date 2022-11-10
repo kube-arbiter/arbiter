@@ -50,17 +50,17 @@ function install_crd {
 	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/install/observer/observer-rbac.yaml
 	# install observer metric-server
 	# use kubearbiter/observer-metric-server:dev for e2e test
-	cat $ROOT/manifests/install/observer/observer-plugins.yaml | sed -e 's/kubearbiter\/observer:.*/localhost:5001\/arbiter.k8s.com.cn\/observer:e2e/g' -e 's/kubearbiter\/observer-default-plugins:.*/kubearbiter\/observer-default-plugins:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
+	cat $ROOT/manifests/install/observer/observer.yaml | sed -e 's/kubearbiter\/observer:.*/localhost:5001\/arbiter.k8s.com.cn\/observer:e2e/g' -e 's/kubearbiter\/observer-default-plugins:.*/kubearbiter\/observer-default-plugins:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
 
-	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} observer-plugins --for condition=Available=True
-	echo "observer-plugins install finish..."
+	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} observer-server --for condition=Available=True
+	echo "observer-server install finish..."
 
 	# install executor rbac
 	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/install/executor/executor-rbac.yaml
 	# install executor
-	# use kubearbiter/executor-resource-tagger:dev for e2e test
-	cat $ROOT/manifests/install/executor/executor-resource-tagger.yaml | sed -e 's/kubearbiter\/executor:.*/localhost:5001\/arbiter.k8s.com.cn\/executor:e2e/g' -e 's/kubearbiter\/executor-resource-tagger:.*/kubearbiter\/executor-resource-tagger:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
-	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} executor-resource-tagger --for condition=Available=True
+	# use kubearbiter/executor:dev for e2e test
+	cat $ROOT/manifests/install/executor/executor.yaml | sed -e 's/kubearbiter\/executor:.*/localhost:5001\/arbiter.k8s.com.cn\/executor:e2e/g' -e 's/kubearbiter\/executor-default-plugins:.*/kubearbiter\/executor-default-plugins:dev/g' | kubectl -n ${ARBITER_NS} apply -f -
+	kubectl wait deployment --timeout=${TIMEOUT} -n ${ARBITER_NS} executor-server --for condition=Available=True
 	echo "executor install finish..."
 }
 
@@ -109,7 +109,7 @@ function test_obi {
 	done
 
 	echo "deploy policies wait 30s"
-	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/example/executor/resource-tagger
+	kubectl -n ${ARBITER_NS} apply -f $ROOT/manifests/example/executor
 	sleep 30
 
 	for i in $(seq 1 6); do

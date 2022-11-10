@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cpu-cost
+  labels:
+    app: cpu-cost
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cpu-cost
+  template:
+    metadata:
+      labels:
+        app: cpu-cost
+    spec:
+      containers:
+      - name: cpu-cost
+        image: arbiter/resource-consumer:1.10
+        command:
+        - stress
+        args:
+        - -m
+        - "1"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "2"

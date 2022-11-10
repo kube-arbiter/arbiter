@@ -23,7 +23,7 @@ spec:
       containers:
         - image: {{ .Values.executor.image.resourceTaggerPluginImage }}
           imagePullPolicy: {{ .Values.executor.image.pullPolicy }}
-          name: resource-tagger
+          name: executor-default-plugins
           resources:
           {{ toYaml .Values.executor.resources | nindent 12 }}
           securityContext:
@@ -33,7 +33,7 @@ spec:
           volumeMounts:
             - mountPath: /plugins
               name: shared-volume
-          command:
+        - command:
             - /bin/executor
           image: {{ .Values.executor.image.executorImage }}
           imagePullPolicy: {{ .Values.executor.image.pullPolicy }}
