@@ -8,10 +8,10 @@ observer:
       memory: 64Mi
   serviceAccountName: "observability"
   image:
-    observerImage: "kubearbiter/observer:v0.1.0"
-    serverImage: "kubearbiter/observer-default-plugins:v0.1.0"
+    observerImage: "kubearbiter/observer:v0.2.0"
+    serverImage: "kubearbiter/observer-default-plugins:v0.2.0"
     pullPolicy: IfNotPresent
-  nameOverride: "observer-plugins"
+  nameOverride: "observer-server"
   address: "http://prometheus-server.kube-system.svc.cluster.local"
 
 executor:
@@ -25,9 +25,9 @@ executor:
       memory: 64Mi
   env: []
   image:
-    resourceTaggerPluginImage: "kubearbiter/executor-resource-tagger:v0.1.0"
+    resourceTaggerPluginImage: "kubearbiter/executor-default-plugins:v0.2.0"
     pullPolicy: IfNotPresent
-    executorImage: "kubearbiter/executor:v0.1.0"
+    executorImage: "kubearbiter/executor:v0.2.0"
 scheduler:
   nameOverride: "arbiter-scheduler"
   serviceAccountName: "scheduler"

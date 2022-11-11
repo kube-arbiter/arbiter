@@ -141,11 +141,11 @@ subjects:
     name: {{ .Values.executor.nameOverride }}
     namespace: {{ .Release.Namespace }}
 ---
-# resource tagger rbac
+# executor-default-plugins rbac
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: resource-tagger
+  name: executor-default-plugins
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

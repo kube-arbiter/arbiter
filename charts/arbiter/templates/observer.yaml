@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
         - command:
-            - default-plugins
+            - observer-default-plugins
             - -address={{ .Values.observer.address }}
             - -v=4
           image: {{ .Values.observer.image.serverImage }}
@@ -42,7 +42,7 @@ spec:
             - observer
           image: {{ .Values.observer.image.observerImage }}
           imagePullPolicy: {{ .Values.observer.image.pullPolicy }}
-          name: obi-controller
+          name: observer-controller
           resources:
           {{ toYaml .Values.observer.resources | nindent 12 }}
           terminationMessagePath: /dev/termination-log

@@ -6,12 +6,12 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: mem-cost
+    name: cpu-cost
   minReplicas: 1
   maxReplicas: 5
   metrics:
   - type: External
     external:
-      metricName: prometheus-pod-mem
+      metricName: obi-cpu-metrics
       metricSelector: {}
-      targetValue: 202042048
+      targetAverageValue: 500m
