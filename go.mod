@@ -14,7 +14,7 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/pflag v1.0.5
-	google.golang.org/grpc v1.46.2
+	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.28.0
 	k8s.io/api v0.23.10
 	k8s.io/apimachinery v0.23.10
