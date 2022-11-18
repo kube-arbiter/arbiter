@@ -1,0 +1,12 @@
+apiVersion: arbiter.k8s.com.cn/v1alpha1
+kind: OverCommit
+metadata:
+  name: overcommit
+spec:
+  namespaceList: ["default"]
+  cpu:
+    ratio: "0.5"
+    limit: "100m"
+  memory:
+    ratio: "0.6"
+    limit: "1024Mi"

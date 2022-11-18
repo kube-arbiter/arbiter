@@ -22,6 +22,8 @@ type ObservabilityActionPolicyExpansion interface{}
 
 type ObservabilityIndicantExpansion interface{}
 
+type OverCommitExpansion interface{}
+
 type SchedulerExpansion interface{}
 
 type ScoreExpansion interface{}

@@ -57,6 +57,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Arbiter().V1alpha1().ObservabilityActionPolicies().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("observabilityindicants"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Arbiter().V1alpha1().ObservabilityIndicants().Informer()}, nil
+	case v1alpha1.SchemeGroupVersion.WithResource("overcommits"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Arbiter().V1alpha1().OverCommits().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("schedulers"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Arbiter().V1alpha1().Schedulers().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("scores"):

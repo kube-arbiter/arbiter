@@ -30,6 +30,7 @@ type ArbiterV1alpha1Interface interface {
 	RESTClient() rest.Interface
 	ObservabilityActionPoliciesGetter
 	ObservabilityIndicantsGetter
+	OverCommitsGetter
 	SchedulersGetter
 	ScoresGetter
 }
@@ -45,6 +46,10 @@ func (c *ArbiterV1alpha1Client) ObservabilityActionPolicies(namespace string) Ob
 
 func (c *ArbiterV1alpha1Client) ObservabilityIndicants(namespace string) ObservabilityIndicantInterface {
 	return newObservabilityIndicants(c, namespace)
+}
+
+func (c *ArbiterV1alpha1Client) OverCommits() OverCommitInterface {
+	return newOverCommits(c)
 }
 
 func (c *ArbiterV1alpha1Client) Schedulers(namespace string) SchedulerInterface {

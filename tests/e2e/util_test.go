@@ -230,3 +230,7 @@ func countChecker(cmd string, output *string) error {
 
 	return nil
 }
+
+func testpodResourceCommand() string {
+	return `kubectl get pod -l app=test -o jsonpath="{.items[0].spec.containers[0].resources.requests}"`
+}

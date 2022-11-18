@@ -7,7 +7,8 @@ REGISTRY ?= "docker.io/kubearbiter"
 
 DOCKER_TARGETS := observer \
                   executor \
-                  scheduler
+                  scheduler \
+                  webhook
 
 TARGETS := ${DOCKER_TARGETS} \
            abctl

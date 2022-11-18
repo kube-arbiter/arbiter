@@ -1,0 +1,27 @@
+---
+# Source: arbiter/templates/mutatingwebhook.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: overcommit-webhook
+  annotations:
+    cert-manager.io/inject-ca-from: default/overcommit-webhook-cert
+webhooks:
+- name: overcommit.webhook.io
+  objectSelector:
+    matchLabels:
+      app: test
+  failurePolicy: Ignore
+  clientConfig:
+    service:
+      name: overcommit-webhook
+      namespace: default
+      path: "/overcommit/mutate"
+      port: 9443
+  rules:
+  - operations: [ "CREATE", "UPDATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  sideEffects: None
+  admissionReviewVersions: ["v1beta1","v1"]
