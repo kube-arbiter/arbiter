@@ -33,8 +33,13 @@ function install_prometheus_by_helm {
 
 function install_certmanager_by_helm {
 	echo "cert manager install start..."
+	if [ $(echo $K8S_VERSION | awk -F '.' '{print $2}') -gt 20 ]; then
+		CertMangerVersion="v1.10.0"
+	else
+		CertMangerVersion="v1.8.2"
+	fi
 	helm repo add jetstack https://charts.jetstack.io
-	helm upgrade --wait --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.10.0 --set installCRDs=true
+	helm upgrade --wait --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version $CertMangerVersion --set installCRDs=true
 	echo "cert manager install finish!"
 }
 
