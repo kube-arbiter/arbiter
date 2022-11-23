@@ -9,7 +9,7 @@ require (
 	github.com/golangci/golangci-lint v1.50.1
 	github.com/google/go-cmp v0.5.9
 	github.com/onsi/ginkgo v1.16.5
-	github.com/onsi/ginkgo/v2 v2.5.0
+	github.com/onsi/ginkgo/v2 v2.5.1
 	github.com/onsi/gomega v1.24.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/spf13/cobra v1.6.1
