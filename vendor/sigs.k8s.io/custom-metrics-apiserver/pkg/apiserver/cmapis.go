@@ -24,8 +24,8 @@ import (
 	genericapi "k8s.io/apiserver/pkg/endpoints"
 	"k8s.io/apiserver/pkg/endpoints/discovery"
 	genericapiserver "k8s.io/apiserver/pkg/server"
-
 	"k8s.io/metrics/pkg/apis/custom_metrics"
+
 	specificapi "sigs.k8s.io/custom-metrics-apiserver/pkg/apiserver/installer"
 	"sigs.k8s.io/custom-metrics-apiserver/pkg/provider"
 	metricstorage "sigs.k8s.io/custom-metrics-apiserver/pkg/registry/custom_metrics"
@@ -80,7 +80,7 @@ func (s *CustomMetricsAdapterServer) cmAPI(groupInfo *genericapiserver.APIGroupI
 			Convertor:       groupInfo.Scheme,
 			UnsafeConvertor: runtime.UnsafeObjectConvertor(groupInfo.Scheme),
 			Typer:           groupInfo.Scheme,
-			Linker:          runtime.SelfLinker(meta.NewAccessor()),
+			Namer:           runtime.Namer(meta.NewAccessor()),
 		},
 
 		ResourceLister: provider.NewCustomMetricResourceLister(s.customMetricsProvider),

@@ -19,18 +19,20 @@ package handler
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha512"
 	"encoding/json"
+	"fmt"
 	"mime"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/NYTimes/gziphandler"
-	"github.com/emicklei/go-restful"
+	"github.com/emicklei/go-restful/v3"
 	"github.com/golang/protobuf/proto"
-	openapi_v2 "github.com/googleapis/gnostic/openapiv2"
+	openapi_v2 "github.com/google/gnostic/openapiv2"
 	"github.com/munnerz/goautoneg"
-	"gopkg.in/yaml.v2"
 	klog "k8s.io/klog/v2"
 	"k8s.io/kube-openapi/pkg/builder"
 	"k8s.io/kube-openapi/pkg/common"
@@ -48,6 +50,13 @@ const (
 	mimePbGz = "application/x-gzip"
 )
 
+func computeETag(data []byte) string {
+	if data == nil {
+		return ""
+	}
+	return fmt.Sprintf("%X", sha512.Sum512(data))
+}
+
 // OpenAPIService is the service responsible for serving OpenAPI spec. It has
 // the ability to safely change the spec while serving it.
 type OpenAPIService struct {
@@ -58,6 +67,7 @@ type OpenAPIService struct {
 
 	jsonCache  handler.HandlerCache
 	protoCache handler.HandlerCache
+	etagCache  handler.HandlerCache
 }
 
 func init() {
@@ -78,21 +88,29 @@ func NewOpenAPIService(spec *spec.Swagger) (*OpenAPIService, error) {
 func (o *OpenAPIService) getSwaggerBytes() ([]byte, string, time.Time, error) {
 	o.rwMutex.RLock()
 	defer o.rwMutex.RUnlock()
-	specBytes, etag, err := o.jsonCache.Get()
+	specBytes, err := o.jsonCache.Get()
 	if err != nil {
 		return nil, "", time.Time{}, err
 	}
-	return specBytes, etag, o.lastModified, nil
+	etagBytes, err := o.etagCache.Get()
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+	return specBytes, string(etagBytes), o.lastModified, nil
 }
 
 func (o *OpenAPIService) getSwaggerPbBytes() ([]byte, string, time.Time, error) {
 	o.rwMutex.RLock()
 	defer o.rwMutex.RUnlock()
-	specPb, etag, err := o.protoCache.Get()
+	specPb, err := o.protoCache.Get()
 	if err != nil {
 		return nil, "", time.Time{}, err
 	}
-	return specPb, etag, o.lastModified, nil
+	etagBytes, err := o.etagCache.Get()
+	if err != nil {
+		return nil, "", time.Time{}, err
+	}
+	return specPb, string(etagBytes), o.lastModified, nil
 }
 
 func (o *OpenAPIService) UpdateSpec(openapiSpec *spec.Swagger) (err error) {
@@ -102,57 +120,22 @@ func (o *OpenAPIService) UpdateSpec(openapiSpec *spec.Swagger) (err error) {
 		return json.Marshal(openapiSpec)
 	})
 	o.protoCache = o.protoCache.New(func() ([]byte, error) {
-		json, _, err := o.jsonCache.Get()
+		json, err := o.jsonCache.Get()
 		if err != nil {
 			return nil, err
 		}
 		return ToProtoBinary(json)
 	})
+	o.etagCache = o.etagCache.New(func() ([]byte, error) {
+		json, err := o.jsonCache.Get()
+		if err != nil {
+			return nil, err
+		}
+		return []byte(computeETag(json)), nil
+	})
 	o.lastModified = time.Now()
 
 	return nil
-}
-
-func jsonToYAML(j map[string]interface{}) yaml.MapSlice {
-	if j == nil {
-		return nil
-	}
-	ret := make(yaml.MapSlice, 0, len(j))
-	for k, v := range j {
-		ret = append(ret, yaml.MapItem{k, jsonToYAMLValue(v)})
-	}
-	return ret
-}
-
-func jsonToYAMLValue(j interface{}) interface{} {
-	switch j := j.(type) {
-	case map[string]interface{}:
-		return jsonToYAML(j)
-	case []interface{}:
-		ret := make([]interface{}, len(j))
-		for i := range j {
-			ret[i] = jsonToYAMLValue(j[i])
-		}
-		return ret
-	case float64:
-		// replicate the logic in https://github.com/go-yaml/yaml/blob/51d6538a90f86fe93ac480b35f37b2be17fef232/resolve.go#L151
-		if i64 := int64(j); j == float64(i64) {
-			if i := int(i64); i64 == int64(i) {
-				return i
-			}
-			return i64
-		}
-		if ui64 := uint64(j); j == float64(ui64) {
-			return ui64
-		}
-		return j
-	case int64:
-		if i := int(j); j == int64(i) {
-			return i
-		}
-		return j
-	}
-	return j
 }
 
 func ToProtoBinary(json []byte) ([]byte, error) {
@@ -220,7 +203,8 @@ func (o *OpenAPIService) RegisterOpenAPIVersionedService(servePath string, handl
 							return
 						}
 					}
-					w.Header().Set("Etag", etag)
+					// ETag must be enclosed in double quotes: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag
+					w.Header().Set("Etag", strconv.Quote(etag))
 					// ServeContent will take care of caching using eTag.
 					http.ServeContent(w, r, servePath, lastModified, bytes.NewReader(data))
 					return
