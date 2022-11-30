@@ -23,13 +23,13 @@ require (
 	k8s.io/client-go v0.23.10
 	k8s.io/code-generator v0.23.10
 	k8s.io/component-base v0.23.10
-	k8s.io/klog/v2 v2.40.1
+	k8s.io/klog/v2 v2.60.1
 	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf
 	k8s.io/kubernetes v1.23.10
 	k8s.io/metrics v0.23.10
 	sigs.k8s.io/controller-runtime v0.11.1
 	sigs.k8s.io/custom-metrics-apiserver v1.23.0
-	sigs.k8s.io/metrics-server v0.6.1
+	sigs.k8s.io/metrics-server v0.6.2
 )
 
 require (
