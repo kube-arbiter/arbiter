@@ -8,25 +8,25 @@ group:
     deleteOrphaned: true
   - source: build/dockerfile.scheduler
     dest: build/dockerfile.scheduler
-  - source: hack
-    dest: hack
+  - source: hack/
+    dest: hack/
     exclude: |
       update-codegen.sh
       verify-codegen.sh
       lib/version.sh
       verify-helm.sh
-  - source: manifests/crds
-    dest: manifests/crds
+  - source: manifests/crds/
+    dest: manifests/crds/
     deleteOrphaned: true
-  - source: manifests/install/scheduler
-    dest: manifests/install/scheduler
+  - source: manifests/install/scheduler/
+    dest: manifests/install/scheduler/
     exclude: |
       kube-scheduler-arbiter-config.yaml
-  - source: pkg/apis/v1alpha1
-    dest: pkg/apis/v1alpha1
+  - source: pkg/apis/v1alpha1/
+    dest: pkg/apis/v1alpha1/
     deleteOrphaned: true
-  - source: pkg/utils
-    dest: pkg/utils
+  - source: pkg/utils/
+    dest: pkg/utils/
     deleteOrphaned: true
   - source: tests/export-logs.sh
     dest: tests/export-logs.sh
