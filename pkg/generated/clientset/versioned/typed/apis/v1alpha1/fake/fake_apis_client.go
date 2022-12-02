@@ -36,6 +36,10 @@ func (c *FakeArbiterV1alpha1) ObservabilityIndicants(namespace string) v1alpha1.
 	return &FakeObservabilityIndicants{c, namespace}
 }
 
+func (c *FakeArbiterV1alpha1) OverCommits() v1alpha1.OverCommitInterface {
+	return &FakeOverCommits{c}
+}
+
 func (c *FakeArbiterV1alpha1) Schedulers(namespace string) v1alpha1.SchedulerInterface {
 	return &FakeSchedulers{c, namespace}
 }
