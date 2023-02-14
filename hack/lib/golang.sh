@@ -7,7 +7,7 @@ set -o pipefail
 function go::build_binary() {
 	local -r targets=($@)
 
-	IFS="," read -ra platforms <<<"${BUILD_PLATFORMS:-}"
+	IFS="," read -ra platforms <<<"${BUILD_PLATFORMS-}"
 	if [[ ${#platforms[@]} -eq 0 ]]; then
 		read -ra platforms <<<$(go::host_platform)
 	fi
@@ -32,7 +32,7 @@ function go::build_binary_for_platform() {
 
 	set -x
 	GO111MODULE=on CGO_ENABLED=0 GOOS=${os} GOARCH=${arch} go build -v \
-		-ldflags "${LDFLAGS:-}" \
+		-ldflags "${LDFLAGS-}" \
 		-o "_output/bin/${platform}/$target" \
 		"cmd/$target/main.go"
 	set +x
