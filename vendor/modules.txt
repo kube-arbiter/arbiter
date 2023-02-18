@@ -618,7 +618,7 @@ github.com/onsi/ginkgo/reporters/stenographer
 github.com/onsi/ginkgo/reporters/stenographer/support/go-colorable
 github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty
 github.com/onsi/ginkgo/types
-# github.com/onsi/ginkgo/v2 v2.7.0
+# github.com/onsi/ginkgo/v2 v2.8.1
 ## explicit; go 1.18
 github.com/onsi/ginkgo/v2
 github.com/onsi/ginkgo/v2/config
@@ -630,7 +630,7 @@ github.com/onsi/ginkgo/v2/internal/parallel_support
 github.com/onsi/ginkgo/v2/internal/testingtproxy
 github.com/onsi/ginkgo/v2/reporters
 github.com/onsi/ginkgo/v2/types
-# github.com/onsi/gomega v1.26.0
+# github.com/onsi/gomega v1.27.1
 ## explicit; go 1.18
 github.com/onsi/gomega
 github.com/onsi/gomega/format
@@ -997,13 +997,13 @@ golang.org/x/exp/slices
 # golang.org/x/exp/typeparams v0.0.0-20220827204233-334a2380cb91
 ## explicit; go 1.18
 golang.org/x/exp/typeparams
-# golang.org/x/mod v0.7.0
+# golang.org/x/mod v0.8.0
 ## explicit; go 1.17
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/modfile
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.5.0
+# golang.org/x/net v0.7.0
 ## explicit; go 1.17
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
@@ -1031,7 +1031,7 @@ golang.org/x/oauth2/jwt
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.4.0
+# golang.org/x/sys v0.5.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/execabs
@@ -1039,10 +1039,10 @@ golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/term v0.4.0
+# golang.org/x/term v0.5.0
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.6.0
+# golang.org/x/text v0.7.0
 ## explicit; go 1.17
 golang.org/x/text/cases
 golang.org/x/text/collate
@@ -1073,7 +1073,7 @@ golang.org/x/text/width
 # golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac
 ## explicit
 golang.org/x/time/rate
-# golang.org/x/tools v0.4.0
+# golang.org/x/tools v0.6.0
 ## explicit; go 1.18
 golang.org/x/tools/go/analysis
 golang.org/x/tools/go/analysis/passes/asmdecl
@@ -1143,6 +1143,7 @@ golang.org/x/tools/internal/gopathwalk
 golang.org/x/tools/internal/imports
 golang.org/x/tools/internal/packagesinternal
 golang.org/x/tools/internal/pkgbits
+golang.org/x/tools/internal/tokeninternal
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
 # gomodules.xyz/jsonpatch/v2 v2.2.0
