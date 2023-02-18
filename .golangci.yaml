@@ -31,7 +31,7 @@ linters:
     - dupword
     - errchkjson
     - errname
-    - gci
+    #- gci # see https://github.com/kube-arbiter/arbiter/issues/107 for detail
     - goconst
     - gocritic
   # - godox  # useful but will make golangci-lint return exit code 1 and check failed
