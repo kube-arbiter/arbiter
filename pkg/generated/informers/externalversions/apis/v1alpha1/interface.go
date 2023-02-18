@@ -30,8 +30,6 @@ type Interface interface {
 	ObservabilityIndicants() ObservabilityIndicantInformer
 	// OverCommits returns a OverCommitInformer.
 	OverCommits() OverCommitInformer
-	// Schedulers returns a SchedulerInformer.
-	Schedulers() SchedulerInformer
 	// Scores returns a ScoreInformer.
 	Scores() ScoreInformer
 }
@@ -60,11 +58,6 @@ func (v *version) ObservabilityIndicants() ObservabilityIndicantInformer {
 // OverCommits returns a OverCommitInformer.
 func (v *version) OverCommits() OverCommitInformer {
 	return &overCommitInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
-}
-
-// Schedulers returns a SchedulerInformer.
-func (v *version) Schedulers() SchedulerInformer {
-	return &schedulerInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // Scores returns a ScoreInformer.

@@ -20,53 +20,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// +genclient
-// +genclient:noStatus
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// Scheduler ...
-type Scheduler struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// Standard object's metadata.
-	// +optional
-	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-
-	// ElasticQuotaSpec defines the Min and Max for Quota.
-	// +optional
-	Spec SchedulerSpec `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
-
-	// ElasticQuotaStatus defines the observed use.
-	// +optional
-	Status SchedulerStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
-}
-
-// SchedulerSpec ...
-type SchedulerSpec struct {
-	// +optional
-	Score string `json:"score,omitempty" protobuf:"bytes,1,opt,name=score"`
-	// todo other type
-}
-
-// SchedulerStatus ...
-type SchedulerStatus struct {
-	// todo
-}
-
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-
-// SchedulerList ...
-type SchedulerList struct {
-	metav1.TypeMeta `json:",inline"`
-
-	// Standard list metadata.
-	// +optional
-	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
-
-	// Items is a list of ElasticQuota objects.
-	Items []Scheduler `json:"items" protobuf:"bytes,2,rep,name=items"`
-}
-
 // LogicPhase ...
 type LogicPhase string
 
@@ -104,7 +57,9 @@ type Score struct {
 
 // ScoreSpec ...
 type ScoreSpec struct {
-	// todo
+	// Weight of the Score
+	Weight int64 `json:"weight,omitempty"`
+	// Logic is the Javascript code
 	Logic string `json:"logic"`
 }
 

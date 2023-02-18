@@ -1,7 +1,0 @@
-apiVersion: arbiter.k8s.com.cn/v1alpha1
-kind: Scheduler
-metadata:
-  name: default
-  namespace: kube-system
-spec:
-  score: show-demo

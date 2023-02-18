@@ -36,8 +36,12 @@ spec:
             description: Specification of the desired behavior of the pod group.
             properties:
               logic:
-                description: todo
+                description: Logic is the Javascript code
                 type: string
+              weight:
+                description: Weight of the Score
+                format: int64
+                type: integer
             required:
             - logic
             type: object
