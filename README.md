@@ -15,7 +15,7 @@ The input can be metrics from your monitoring system, logs from your logging sys
 
 ### Quick Start
 
-- Refer to [how to install](doc/install.md) for quick start.
+- Refer to [Install and Run Arbiter](http://arbiter.k8s.com.cn/docs/Quick%20Start/install) for quick start.
 
 - Refer to [helm installation](./charts/arbiter/README.md)
 
