@@ -46,12 +46,12 @@ function install_certmanager_by_helm {
 function install_metrics_server_by_helm {
 	echo "metrics-server install start..."
 	helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
-	helm upgrade --install metrics-server metrics-server/metrics-server
+	helm upgrade --install metrics-server metrics-server/metrics-server --namespace=metrics-server --create-namespace
 	# https://github.com/kubernetes-sigs/metrics-server/issues/917#issuecomment-986732226
-	kubectl scale --replicas=0 --timeout=${TIMEOUT} -n default deployment/metrics-server
-	kubectl patch deploy -n default metrics-server --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
-	kubectl scale --replicas=1 --timeout=${TIMEOUT} -n default deployment/metrics-server
-	kubectl wait deployment --timeout=${TIMEOUT} -n default metrics-server --for condition=Available=True
+	kubectl scale --replicas=0 --timeout=${TIMEOUT} -n metrics-server deployment/metrics-server
+	kubectl patch deploy -n metrics-server metrics-server --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
+	kubectl scale --replicas=1 --timeout=${TIMEOUT} -n metrics-server deployment/metrics-server
+	kubectl wait deployment --timeout=${TIMEOUT} -n metrics-server metrics-server --for condition=Available=True
 	echo "metrics-server install finish!"
 }
 
