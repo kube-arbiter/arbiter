@@ -18,8 +18,6 @@ package e2e_test
 
 import (
 	"fmt"
-	"os"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -33,7 +31,7 @@ var _ = Describe("webhook", Label("webhook"), func() {
 			Expect(countChecker(testpodResourceCommand(), &output)).Error().Should(Succeed(), func() {
 				fmt.Println("check the resource of pod successfully")
 			})
-			if version := os.Getenv("K8S_VERSION"); strings.HasPrefix(version, "v1.18") {
+			if LowKubernetesVersion("v1.18") {
 				Expect(output).To(Equal(`map[cpu:50m memory:629145Ki]`), func() string {
 					return output
 				})
