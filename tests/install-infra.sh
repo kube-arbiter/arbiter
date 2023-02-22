@@ -140,12 +140,12 @@ function test_obi {
 			echo "testing obi $name have data"
 			if [[ $(kubectl get obi ${name} -n ${ARBITER_NS} -oyaml | grep 'timestamp' | awk '{print NR}' | tail -n1) -gt 5 ]]; then
 				sum=$(kubectl get obi ${name} -n ${ARBITER_NS} -o jsonpath="{.status.metrics.*[*].records.*.value}" | awk 'BEGIN{sum=0} {for(i=1;i<=NF;i++)sum+=$i} END{print(sum)}')
-				if [ $sum -eq 0 ]; then
+				if (($(echo "$sum == 0" | bc -l))); then
 					# The value might not be a number and summed, but it maybe not wrong as the value maybe original raw data from prometheus.
 					sum=$(kubectl get obi ${name} -n ${ARBITER_NS} -o jsonpath="{.status.metrics.*[*].records.*.value}" | grep "value" | wc -l)
 				fi
 
-				if [[ $sum -eq 0 ]]; then
+				if [[ -z $sum ]]; then
 					echo "obi $s data is empty"
 					kubectl get obi -n ${ARBITER_NS} -owide
 					echo $(kubectl get obi -n ${ARBITER_NS} -oyaml | grep 'records' | awk '{print NR}' | tail -n1)

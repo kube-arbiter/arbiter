@@ -19,6 +19,7 @@ package e2e_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -41,7 +42,12 @@ func DeleteByYaml(yaml, namespace string, timeoutSecond int) (outStr string, err
 	if namespace == "" {
 		namespace = DefaultNamespace
 	}
-	args := []string{"delete", "-f", "-", "-n", namespace, "--wait=true", "--cascade=foreground"}
+	args := []string{"delete", "-f", "-", "-n", namespace, "--wait=true"}
+	if !LowKubernetesVersion("v1.19") {
+		// in 1.18 and 1.19 --cascade=true: If true, cascade the deletion of the resources managed by this resource (e.g. Pods created by a ReplicationController).  Default true.
+		// in 1.20+         --cascade='background': Must be "background", "orphan", or "foreground". Selects the deletion cascading strategy for the dependents (e.g. Pods created by a ReplicationController). Defaults to background.
+		args = append(args, "--cascade=foreground")
+	}
 	return BaseCmd("", yaml, timeoutSecond, args...)
 }
 
@@ -52,7 +58,12 @@ func DeletePod(deployName, namespace, label string, timeoutSecond int, wait bool
 	if label == "" {
 		label = "app=" + deployName
 	}
-	args := []string{"delete", "pod", "-n", namespace, "-l", label, "--wait=true", "--cascade=foreground"}
+	args := []string{"delete", "pod", "-n", namespace, "-l", label}
+	if !LowKubernetesVersion("v1.19") {
+		// in 1.18 and 1.19 --cascade=true: If true, cascade the deletion of the resources managed by this resource (e.g. Pods created by a ReplicationController).  Default true.
+		// in 1.20+         --cascade='background': Must be "background", "orphan", or "foreground". Selects the deletion cascading strategy for the dependents (e.g. Pods created by a ReplicationController). Defaults to background.
+		args = append(args, "--cascade=foreground")
+	}
 	if wait {
 		args = append(args, "--wait=true")
 	} else {
@@ -183,12 +194,17 @@ func DeleteDeploy(name string, namespace string, timeoutSecond int) error {
 	if namespace == "" {
 		namespace = DefaultNamespace
 	}
-	args := []string{"delete", "deploy", "-n", namespace, name, "--wait", "--timeout", fmt.Sprintf("%ds", timeoutSecond), "--cascade=foreground"}
+	args := []string{"delete", "deploy", "-n", namespace, name, "--wait", "--timeout", fmt.Sprintf("%ds", timeoutSecond)}
+	if !LowKubernetesVersion("v1.19") {
+		// in 1.18 and 1.19 --cascade=true: If true, cascade the deletion of the resources managed by this resource (e.g. Pods created by a ReplicationController).  Default true.
+		// in 1.20+         --cascade='background': Must be "background", "orphan", or "foreground". Selects the deletion cascading strategy for the dependents (e.g. Pods created by a ReplicationController). Defaults to background.
+		args = append(args, "--cascade=foreground")
+	}
 	_, err := BaseCmd("", "", timeoutSecond, args...)
 	if err != nil {
 		return fmt.Errorf("delete pod[%s] error:[%s]", strings.Join(args, " "), err)
 	}
-	return nil
+	return WaitDeletePod(namespace, name, timeoutSecond)
 }
 
 func obiCountCommand() string {
@@ -289,6 +305,39 @@ func CreateNS(namespace string, timeoutSecond int) (err error) {
 	}
 	if !strings.Contains(out, namespace) {
 		return fmt.Errorf("get ns error:%s", out)
+	}
+	return nil
+}
+
+func LowKubernetesVersion(threshold string) bool {
+	version := os.Getenv("K8S_VERSION")
+	switch threshold {
+	case "v1.18":
+		return strings.HasPrefix(version, "v1.18")
+	case "v1.19":
+		return strings.HasPrefix(version, "v1.18") || strings.HasPrefix(version, "v1.19")
+	}
+	return false
+}
+
+func WaitDeletePod(namespace, name string, timeoutSecond int) (err error) {
+	if !LowKubernetesVersion("v1.19") {
+		return nil
+	}
+	args := []string{"get", "pod", "-n", namespace, "--no-headers=true", "--ignore-not-found=true"}
+	if name != "--all" {
+		args = append(args, []string{"-l", fmt.Sprintf("app.kubernetes.io/name=%s", name)}...)
+	}
+	out := ""
+	for {
+		out, err = BaseCmd("", "", timeoutSecond, args...)
+		if err != nil {
+			return fmt.Errorf("delete pod[%s] wait get error:[%s]", strings.Join(args, " "), err)
+		}
+		if out == "" {
+			break
+		}
+		time.Sleep(time.Second)
 	}
 	return nil
 }
