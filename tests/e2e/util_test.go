@@ -29,13 +29,19 @@ const (
 	Kubectl          = "kubectl"
 )
 
-func CreateByYaml(yaml string, timeoutSecond int) (outStr string, err error) {
-	args := []string{"apply", "-f", "-"}
+func CreateByYaml(yaml, namespace string, timeoutSecond int) (outStr string, err error) {
+	if namespace == "" {
+		namespace = DefaultNamespace
+	}
+	args := []string{"apply", "-f", "-", "-n", namespace}
 	return BaseCmd("", yaml, timeoutSecond, args...)
 }
 
-func DeleteByYaml(yaml string, timeoutSecond int) (outStr string, err error) {
-	args := []string{"delete", "-f", "-"}
+func DeleteByYaml(yaml, namespace string, timeoutSecond int) (outStr string, err error) {
+	if namespace == "" {
+		namespace = DefaultNamespace
+	}
+	args := []string{"delete", "-f", "-", "-n", namespace, "--wait=true", "--cascade=foreground"}
 	return BaseCmd("", yaml, timeoutSecond, args...)
 }
 
@@ -46,7 +52,7 @@ func DeletePod(deployName, namespace, label string, timeoutSecond int, wait bool
 	if label == "" {
 		label = "app=" + deployName
 	}
-	args := []string{"delete", "pod", "-n", namespace, "-l", label}
+	args := []string{"delete", "pod", "-n", namespace, "-l", label, "--wait=true", "--cascade=foreground"}
 	if wait {
 		args = append(args, "--wait=true")
 	} else {
@@ -67,12 +73,12 @@ func GetPodNodeName(deployName, namespace, label string, timeoutSecond int) (nod
 		label = "app=" + deployName
 	}
 	// 1. wait deploy progress (create or rollout) done.
-	args := []string{"wait", "--for=condition=Progressing", fmt.Sprintf("deployment/%s", deployName)}
+	args := []string{"wait", "--for=condition=Progressing", fmt.Sprintf("deployment/%s", deployName), "-n", namespace}
 	if _, err = BaseCmd("", "", timeoutSecond, args...); err != nil {
 		return "", err
 	}
 	// 2. wait deploy available (can serve) done.
-	args = []string{"wait", "--for=condition=Available", fmt.Sprintf("deployment/%s", deployName)}
+	args = []string{"wait", "--for=condition=Available", fmt.Sprintf("deployment/%s", deployName), "-n", namespace}
 	if _, err = BaseCmd("", "", timeoutSecond, args...); err != nil {
 		return "", err
 	}
@@ -177,7 +183,7 @@ func DeleteDeploy(name string, namespace string, timeoutSecond int) error {
 	if namespace == "" {
 		namespace = DefaultNamespace
 	}
-	args := []string{"delete", "deploy", "-n", namespace, name, "--wait=true"}
+	args := []string{"delete", "deploy", "-n", namespace, name, "--wait", "--timeout", fmt.Sprintf("%ds", timeoutSecond), "--cascade=foreground"}
 	_, err := BaseCmd("", "", timeoutSecond, args...)
 	if err != nil {
 		return fmt.Errorf("delete pod[%s] error:[%s]", strings.Join(args, " "), err)
@@ -233,4 +239,56 @@ func countChecker(cmd string, output *string) error {
 
 func testpodResourceCommand() string {
 	return `kubectl get pod -l app=test -o jsonpath="{.items[0].spec.containers[0].resources.requests}"`
+}
+
+func CleanTestNS(namespace string, timeoutSecond int) (err error) {
+	if namespace == "" {
+		namespace = DefaultNamespace
+	}
+	err = DeleteDeploy("--all", namespace, timeoutSecond)
+	if err != nil {
+		return err
+	}
+	args := []string{"get", "pod", "-n", namespace, "--no-headers=true", "--ignore-not-found=true"}
+	var out string
+	out, err = BaseCmd("", "", timeoutSecond, args...)
+	if err != nil {
+		return err
+	}
+	if out != "" {
+		return fmt.Errorf("not completely deleted, out:|%s|", out)
+	}
+	return nil
+}
+
+func CreateNS(namespace string, timeoutSecond int) (err error) {
+	var out string
+	if namespace == "" {
+		namespace = DefaultNamespace
+	}
+	// check already exist
+	args := []string{"get", "ns", namespace, "--ignore-not-found=true"}
+	out, err = BaseCmd("", "", timeoutSecond, args...)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(out, namespace) && strings.Contains(out, "Active") {
+		return nil
+	}
+	// create
+	args = []string{"create", "ns", namespace}
+	_, err = BaseCmd("", "", timeoutSecond, args...)
+	if err != nil {
+		return err
+	}
+	// create success
+	args = []string{"get", "ns", namespace, "--ignore-not-found=true"}
+	out, err = BaseCmd("", "", timeoutSecond, args...)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(out, namespace) {
+		return fmt.Errorf("get ns error:%s", out)
+	}
+	return nil
 }

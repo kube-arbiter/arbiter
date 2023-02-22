@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/console"
@@ -58,12 +59,11 @@ var _ framework.ScorePlugin = &Arbiter{}
 var _ framework.ScoreExtensions = &Arbiter{}
 
 func (ex *Arbiter) NormalizeScore(ctx context.Context, state *framework.CycleState, p *v1.Pod, scores framework.NodeScoreList) *framework.Status {
-	klog.V(10).Infoln(LogPrefix + "NormalizeScore")
 	return helper.DefaultNormalizeScore(framework.MaxNodeScore, false, scores)
 }
 
 func (ex *Arbiter) backToDefaultScore(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeName string) (score int64, newState *framework.Status) {
-	klog.V(2).Infoln(LogPrefix + "back to default score")
+	klog.V(2).Infoln(LogPrefix+"back to default score function", "pod", klog.KObj(pod), "node", nodeName)
 	return 0, nil
 }
 
@@ -71,29 +71,52 @@ func (ex *Arbiter) Score(ctx context.Context, state *framework.CycleState, pod *
 	defer func() {
 		if r := recover(); r != nil {
 			if err, ok := r.(error); ok {
-				klog.ErrorS(err, LogPrefix+"catch a panic", "pod", klog.KObj(pod), "node", nodeName)
+				klog.V(1).ErrorS(err, LogPrefix+"catch a panic", "pod", klog.KObj(pod), "node", nodeName)
 			} else {
-				klog.Errorf(LogPrefix+"catch a panic %#v pod:%#v, nodeName:%s", r, klog.KObj(pod), nodeName)
+				klog.V(1).ErrorS(fmt.Errorf(LogPrefix+"catch a panic %#v", r), "pod", klog.KObj(pod), "node", nodeName)
 			}
 			score, newState = ex.backToDefaultScore(ctx, state, pod, nodeName)
 		}
 	}()
-	return ex.score(ctx, state, pod, nodeName)
-}
-
-func (ex *Arbiter) score(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeName string) (score int64, newState *framework.Status) {
-	var err error
-	klog.V(10).InfoS(LogPrefix+"Score", "pod", klog.KObj(pod), "node", nodeName)
-	logic := ex.manager.GetScoreSpec(ctx)
-	if strings.TrimSpace(logic) == "" {
-		klog.Infoln(LogPrefix + "no logic")
+	scoreResults, totalWeight := ex.manager.GetScore(ctx, pod.GetNamespace())
+	if totalWeight <= 0 {
+		klog.V(1).ErrorS(errors.New("all scoreCR totalWeight <= 0"), LogPrefix+"all scoreCR totalWeight <=0", "pod", klog.KObj(pod), "node", nodeName)
 		return ex.backToDefaultScore(ctx, state, pod, nodeName)
 	}
-	klog.V(10).InfoS(LogPrefix+"ScoreLogic", "pod", klog.KObj(pod), "node", nodeName, "logicStr", logic)
+	ex.frameworkHandler.Parallelizer().Until(ctx, len(scoreResults), func(piece int) {
+		subCtx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		logic := scoreResults[piece].Logic
+		nameKey := scoreResults[piece].NameKey
+		scoreResults[piece].Result, scoreResults[piece].Err = ex.scoreOne(subCtx, state, pod, nodeName, logic, nameKey)
+	})
+	msg := strings.Builder{}
+	for _, v := range scoreResults {
+		score += v.Result * v.Weight
+		_, _ = msg.WriteString(fmt.Sprintf("| scoreCR=%s weight=%d score=%d ", v.NameKey, v.Weight, v.Result))
+		if v.Err != nil {
+			_, _ = msg.WriteString(fmt.Sprintf("err=%s ", v.Err))
+		}
+		_, _ = msg.WriteString("|")
+	}
+	score /= totalWeight
+	klog.V(1).InfoS(LogPrefix+"Score Result", "pod", klog.KObj(pod), "node", nodeName, "score", score, "scoreDetail", msg.String())
+	if score < 0 || score > 100 {
+		return 0, framework.AsStatus(errors.New(msg.String()))
+	}
+	return
+}
+
+func (ex *Arbiter) scoreOne(ctx context.Context, state *framework.CycleState, pod *v1.Pod, nodeName, logic, scoreKey string) (score int64, err error) {
+	klog.V(5).InfoS(LogPrefix+"Score One", "pod", klog.KObj(pod), "node", nodeName)
+	if strings.TrimSpace(logic) == "" {
+		return 0, errors.New("no logic")
+	}
+	klog.V(5).InfoS(LogPrefix+"ScoreLogic", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "logicStr", logic)
 
 	nodeInfo, err := ex.frameworkHandler.SnapshotSharedLister().NodeInfos().Get(nodeName)
 	if err != nil {
-		return 0, framework.AsStatus(fmt.Errorf("getting node %q from Snapshot: %w", nodeName, err))
+		return 0, fmt.Errorf("getting node %q from Snapshot: %w", nodeName, err)
 	}
 
 	registry := new(require.Registry)
@@ -104,12 +127,12 @@ func (ex *Arbiter) score(ctx context.Context, state *framework.CycleState, pod *
 
 	podOBI, err := ex.manager.GetPodOBI(ctx, pod)
 	if err != nil {
-		klog.Warningf(LogPrefix+"GetPodMetric failed, pod:%#v use default value instead", klog.KObj(pod))
+		klog.V(4).InfoS(LogPrefix+"GetPodOBI failed, use default value instead", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey)
 	}
 	node := nodeInfo.Node()
 	nodeOBI, err := ex.manager.GetNodeOBI(ctx, node.Name)
 	if err != nil {
-		klog.Warningf(LogPrefix+"GetNodeOBI failed, node:%#v use default value instead", klog.KObj(node))
+		klog.V(4).InfoS(LogPrefix+"GetNodeOBI failed, use default value instead", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey)
 	}
 	podWithOBI := &manager.PodWithOBI{Pod: *pod, OBI: podOBI}
 
@@ -118,22 +141,31 @@ func (ex *Arbiter) score(ctx context.Context, state *framework.CycleState, pod *
 	*/
 	pt, err := json.Marshal(podWithOBI)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"pod json.Marshal error", "pod", klog.KObj(&podWithOBI.Pod))
-		klog.V(5).ErrorS(err, LogPrefix+"pod json.Marshal error", "podWithOBI", podWithOBI)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		if klog.V(5).Enabled() {
+			klog.V(5).ErrorS(err, LogPrefix+"pod json.Marshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey)
+		} else if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(err, LogPrefix+"pod json.Marshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "podWithOBI", podWithOBI)
+		}
+		return 0, err
 	}
 	var po map[string]interface{}
 	if err = json.Unmarshal(pt, &po); err != nil {
-		klog.ErrorS(err, LogPrefix+"pod json.Unmarshal error", "pod", klog.KObj(&podWithOBI.Pod))
-		klog.V(5).ErrorS(err, LogPrefix+"pod json.Marshal error", "podWithOBI", podWithOBI)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		if klog.V(5).Enabled() {
+			klog.V(5).ErrorS(err, LogPrefix+"pod json.Unmarshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey)
+		} else if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(err, LogPrefix+"pod json.Unmarshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "podWithOBI", podWithOBI)
+		}
+		return 0, err
 	}
 
 	err = vm.Set("pod", po)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"js vm set pod get err", "logic", logic, "pod", klog.KObj(&podWithOBI.Pod))
-		klog.V(5).ErrorS(err, LogPrefix+"js vm set pod get err", "logic", logic, "podWithOBI", podWithOBI)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		if klog.V(5).Enabled() {
+			klog.V(5).ErrorS(err, LogPrefix+"js vm set pod get err", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic)
+		} else if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(err, LogPrefix+"js vm set pod get err", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic, "podWithOBI", podWithOBI)
+		}
+		return 0, err
 	}
 	nodeWithOBI := manager.NodeWithOBI{Node: *node, OBI: nodeOBI, CPUReq: nodeInfo.NonZeroRequested.MilliCPU, MemReq: nodeInfo.NonZeroRequested.Memory}
 
@@ -142,80 +174,101 @@ func (ex *Arbiter) score(ctx context.Context, state *framework.CycleState, pod *
 	*/
 	t, err := json.Marshal(nodeWithOBI)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"node json.Marshal error", "node", klog.KObj(&nodeWithOBI.Node))
-		klog.V(5).ErrorS(err, LogPrefix+"node json.Marshal error", "nodeWithOBI", nodeWithOBI)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		if klog.V(5).Enabled() {
+			klog.V(5).ErrorS(err, LogPrefix+"node json.Marshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey)
+		} else if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(err, LogPrefix+"node json.Marshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "nodeWithOBI", nodeWithOBI)
+		}
+		return 0, err
 	}
 	var no map[string]interface{}
 	if err = json.Unmarshal(t, &no); err != nil {
-		klog.ErrorS(err, LogPrefix+"node json.Unmarshal error", "node", klog.KObj(&nodeWithOBI.Node))
-		klog.V(5).ErrorS(err, LogPrefix+"node json.Unmarshal error", "nodeWithOBI", nodeWithOBI)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		if klog.V(5).Enabled() {
+			klog.V(5).ErrorS(err, LogPrefix+"node json.Unmarshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey)
+		} else if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(err, LogPrefix+"node json.Unmarshal error", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "nodeWithOBI", nodeWithOBI)
+		}
+		return 0, err
 	}
 
 	err = vm.Set("node", no)
 	if err != nil {
-		klog.ErrorS(err, LogPrefix+"js vm set node get err", "logic", logic, "node", klog.KObj(&nodeWithOBI.Node))
-		klog.V(5).ErrorS(err, LogPrefix+"js vm set node get err", "logic", logic, "node Unmarshal", no)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
-	}
-	klog.Infoln(LogPrefix + "get js val finish")
-
-	if klog.V(4).Enabled() {
-		if _, err = vm.RunString(DebugLogic); err != nil {
-			klog.ErrorS(err, LogPrefix+"run debug logic error")
+		if klog.V(5).Enabled() {
+			klog.V(5).ErrorS(err, LogPrefix+"js vm set node get err", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey)
+		} else if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(err, LogPrefix+"js vm set node get err", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic, "node Unmarshal", no)
 		}
-		klog.Infoln(LogPrefix + "debug logic finish")
+		return 0, err
+	}
+	klog.Infoln(LogPrefix+"get js val finish", "pod", klog.KObj(pod), "node", nodeName)
+
+	if klog.V(5).Enabled() {
+		if _, err = vm.RunString(DebugLogic); err != nil {
+			klog.ErrorS(err, LogPrefix+"run debug logic error", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "debugLogic", DebugLogic)
+		}
+		klog.Infoln(LogPrefix+"debug logic finish", "pod", klog.KObj(pod), "node", nodeName, "debugLogic", DebugLogic, "scoreCR", scoreKey)
 	}
 
 	if _, err = vm.RunString(logic); err != nil {
-		klog.ErrorS(err, LogPrefix+"score js logic is not right", "logic", logic)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(err, LogPrefix+"score js logic is not right", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic, "podWithOBI", podWithOBI, "nodeWithOBI", nodeWithOBI)
+		} else {
+			klog.V(1).ErrorS(err, LogPrefix+"score js logic is not right", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic)
+		}
+		return 0, err
 	}
-	klog.V(10).Infoln(LogPrefix + "run js logic finish")
+	klog.V(5).Infoln(LogPrefix+"run js logic finish", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey)
 
 	if v := vm.Get("score"); v == nil {
-		klog.ErrorS(ErrNoScoreFunction, LogPrefix+"should write a function score(){...} in score crd, back to default score logic", "logic", logic)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		if klog.V(4).Enabled() {
+			klog.V(4).ErrorS(ErrNoScoreFunction, LogPrefix+"should write a function score(){...} in score crd, back to default score logic", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey)
+		} else {
+			klog.V(1).ErrorS(ErrNoScoreFunction, LogPrefix+"should write a function score(){...} in score crd, back to default score logic", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic)
+		}
+		return 0, err
 	}
-	klog.V(10).Infoln(LogPrefix + "defined there is a score function in js")
+	klog.V(5).Infoln(LogPrefix+"defined there is a score function in js", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey)
 
 	var fn func() float64
 	if err = vm.ExportTo(vm.Get("score"), &fn); err != nil {
-		klog.V(4).ErrorS(err, LogPrefix+"Score get result 0", "logic", logic)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		klog.V(4).ErrorS(err, LogPrefix+"Score get error result", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic)
+		return 0, err
 	}
-	klog.V(10).Infoln(LogPrefix + "get score value finish")
+	klog.V(5).InfoS(LogPrefix+"get score value finish", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey)
 
 	defer func() {
 		if r := recover(); r != nil {
 			if err, ok := r.(error); ok {
-				klog.ErrorS(err, LogPrefix+"Score js logic get panic", "logic", logic, "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName)
-				klog.V(5).ErrorS(err, LogPrefix+"Score js logic get panic", "logic", logic, "podWithOBI", podWithOBI, "node", nodeName)
+				if klog.V(4).Enabled() {
+					klog.V(4).ErrorS(err, LogPrefix+"Score js logic get panic", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic, "podWithOBI", podWithOBI, "nodeWithOBI", nodeWithOBI)
+				} else {
+					klog.V(1).ErrorS(err, LogPrefix+"Score js logic get panic", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey)
+				}
 			} else {
-				klog.ErrorS(fmt.Errorf("panic"), LogPrefix+"Score js logic get panic", "logic", logic, "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "panic", r)
-				klog.V(5).ErrorS(fmt.Errorf("panic"), LogPrefix+"Score js logic get panic", "logic", logic, "podWithOBI", podWithOBI, "node", nodeName, "panic", r)
+				if klog.V(4).Enabled() {
+					klog.V(4).ErrorS(fmt.Errorf("get panic:%v", r), LogPrefix+"Score js logic get panic", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey, "logic", logic, "podWithOBI", podWithOBI, "nodeWithOBI", nodeWithOBI)
+				} else {
+					klog.V(1).ErrorS(fmt.Errorf("get panic:%v", r), LogPrefix+"Score js logic get panic", "pod", klog.KObj(&podWithOBI.Pod), "node", nodeName, "scoreCR", scoreKey)
+				}
 			}
-			score, newState = ex.backToDefaultScore(ctx, state, pod, nodeName)
 		}
 	}()
 	score = int64(fn())
-	klog.V(10).InfoS(LogPrefix+"all finish", "score", score, "nodeName", node.Name, "podName", pod.Name)
+	klog.V(5).InfoS(LogPrefix+"all finish", "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "score", score)
 	if score < 0 || score > 100 {
-		msg := fmt.Sprintf("arbiter-Scheduler returns an invalid score %d, it should in the range of [%v, %v]", score, framework.MinNodeScore, framework.MaxNodeScore)
-		klog.ErrorS(errors.New(msg), msg, "score", score)
-		return ex.backToDefaultScore(ctx, state, pod, nodeName)
+		msg := fmt.Sprintf("ScoreCR:%s returns an invalid score %d, it should in the range of [%v, %v]", scoreKey, score, framework.MinNodeScore, framework.MaxNodeScore)
+		klog.ErrorS(errors.New(msg), msg, "pod", klog.KObj(pod), "node", nodeName, "scoreCR", scoreKey, "score", score)
+		return 0, errors.New(msg)
 	}
 	return score, nil
 }
 
 func (ex *Arbiter) ScoreExtensions() framework.ScoreExtensions {
-	klog.V(10).Infoln(LogPrefix + "ScoreExtensions")
 	return nil
 }
 
 func New(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) {
-	klog.V(10).Infof(LogPrefix+"New Arbiter Init Start...%#v", obj)
+	klog.V(5).Infof(LogPrefix+"New Arbiter Init Start...%#v", obj)
 	restConfig := handle.KubeConfig()
 	client, err := versioned.NewForConfig(restConfig)
 	if err != nil {
@@ -224,7 +277,6 @@ func New(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) 
 
 	ctx := context.Background()
 	informerFactory := informers.NewSharedInformerFactory(client, 0)
-	schedulerInformer := informerFactory.Arbiter().V1alpha1().Schedulers()
 	scoreInformer := informerFactory.Arbiter().V1alpha1().Scores()
 	observabilityIndicantInformer := informerFactory.Arbiter().V1alpha1().ObservabilityIndicants()
 	podInformer := handle.SharedInformerFactory().Core().V1().Pods()
@@ -240,11 +292,6 @@ func New(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) 
 		UpdateFunc: mgr.ScoreUpdate,
 		DeleteFunc: mgr.ScoreDelete,
 	})
-	schedulerInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    mgr.SchedulerAdd,
-		UpdateFunc: mgr.SchedulerUpdate,
-		DeleteFunc: mgr.SchedulerDelete,
-	})
 	observabilityIndicantInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    mgr.ObservabilityIndicantAdd,
 		UpdateFunc: mgr.ObservabilityIndicantUpdate,
@@ -256,7 +303,7 @@ func New(obj runtime.Object, handle framework.Handle) (framework.Plugin, error) 
 		klog.ErrorS(err, LogPrefix+"Cannot sync caches")
 		return nil, err
 	}
-	klog.V(10).Infoln(LogPrefix + "New Arbiter Init Finish...")
+	klog.V(5).Infoln(LogPrefix + "New Arbiter Init Finish...")
 	return plugin, nil
 }
 
@@ -265,10 +312,9 @@ func (ex *Arbiter) Name() string {
 }
 
 func (ex *Arbiter) PreFilterExtensions() framework.PreFilterExtensions {
-	klog.V(10).Infoln(LogPrefix + "PreFilterExtensions")
 	return nil
 }
 
 func (ex *Arbiter) PostBind(ctx context.Context, _ *framework.CycleState, pod *v1.Pod, nodeName string) {
-	klog.V(10).InfoS(LogPrefix+"PostBind", "pod", klog.KObj(pod), "nodeName", nodeName)
+	klog.V(5).InfoS(LogPrefix+"PostBind", "pod", klog.KObj(pod), "node", nodeName)
 }

@@ -19,6 +19,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 
 	gocache "github.com/patrickmn/go-cache"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	informerv1 "k8s.io/client-go/informers/core/v1"
 	listerv1 "k8s.io/client-go/listers/core/v1"
@@ -38,7 +40,6 @@ import (
 )
 
 const (
-	DefaultName      = "default"
 	ManagerLogPrefix = "[Arbiter-Manager] "
 )
 
@@ -48,8 +49,15 @@ var (
 	ErrNoData          = errors.New("obi have no data")
 )
 
+type ScoreResult struct {
+	NameKey string
+	schedv1alpha1.ScoreSpec
+	Result int64
+	Err    error
+}
+
 type Manager interface {
-	GetScoreSpec(ctx context.Context) string
+	GetScore(ctx context.Context, namespace string) (scoreResults []ScoreResult, totalWeight int64)
 	GetPodOBI(ctx context.Context, pod *v1.Pod) (obi map[string]OBI, err error)
 	GetNodeOBI(ctx context.Context, nodeName string) (obi map[string]OBI, err error)
 }
@@ -60,8 +68,7 @@ type manager struct {
 	// TODO(Abirdcfly): should benchmark gocache or replace with other struct
 	podMetric  map[string]*gocache.Cache
 	nodeMetric map[string]*gocache.Cache
-	scheduler  *gocache.Cache
-	score      *gocache.Cache
+	score      map[string]*gocache.Cache
 
 	// snapshotSharedLister is pod shared list
 	snapshotSharedLister framework.SharedLister
@@ -81,7 +88,7 @@ func (mgr *manager) GetNodeOBI(ctx context.Context, nodeName string) (obi map[st
 	nodeCache, ok := mgr.nodeMetric[nodeName]
 	if !ok {
 		err = ErrNotFoundInCache
-		klog.V(4).ErrorS(err, "Failed to get node OBI", "nodeName", nodeName)
+		klog.V(4).ErrorS(err, "Failed to get node OBI", "node", nodeName)
 		return
 	}
 	obi = make(map[string]OBI, nodeCache.ItemCount())
@@ -91,7 +98,7 @@ func (mgr *manager) GetNodeOBI(ctx context.Context, nodeName string) (obi map[st
 			obi[k] = data
 		} else {
 			err = ErrNotFoundInCache
-			klog.V(4).ErrorS(err, "Failed to get node OBI", "nodeName", nodeName)
+			klog.V(4).ErrorS(err, "Failed to get node OBI", "node", nodeName)
 			return
 		}
 	}
@@ -103,8 +110,7 @@ func NewManager(client clientset.Interface, snapshotSharedLister framework.Share
 		client:               client,
 		podMetric:            make(map[string]*gocache.Cache),
 		nodeMetric:           make(map[string]*gocache.Cache),
-		scheduler:            gocache.New(gocache.NoExpiration, gocache.NoExpiration),
-		score:                gocache.New(gocache.NoExpiration, gocache.NoExpiration),
+		score:                make(map[string]*gocache.Cache),
 		snapshotSharedLister: snapshotSharedLister,
 		podLister:            podInformer.Lister(),
 		nodeLister:           nodeInformer.Lister(),
@@ -113,132 +119,129 @@ func NewManager(client clientset.Interface, snapshotSharedLister framework.Share
 	return pgMgr
 }
 
-func (mgr *manager) GetScoreSpec(ctx context.Context) (logic string) {
-	scoreName, ok := mgr.scheduler.Get("Score")
-	if !ok {
-		klog.ErrorS(ErrNotFoundInCache, "Failed to get scheduler.score")
-		return
-	}
-	if scoreName == nil {
-		return
-	}
-	scoreNameStr, ok := scoreName.(string)
-	if !ok {
-		klog.ErrorS(ErrTypeAssertion, "Failed to get scoreNameStr")
-		return
-	}
-	scoreSpecLogic, ok := mgr.score.Get(scoreNameStr)
-	if !ok {
-		klog.ErrorS(ErrNotFoundInCache, "Failed to get score.spec.logic", "Score.Name", scoreNameStr)
-		return
-	}
-	logic, ok = scoreSpecLogic.(string)
-	if !ok {
-		klog.ErrorS(ErrTypeAssertion, "Failed to get score.spec.logic", "Score.Name", scoreNameStr)
-		return
-	}
-	return
-}
-
 func (mgr *manager) ScoreAdd(obj interface{}) {
-	klog.V(10).Infof("%s get new Score", ManagerLogPrefix)
+	klog.V(5).Infof("%s get new Score", ManagerLogPrefix)
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
 		runtime.HandleError(err)
 		return
 	}
-	ns, _, _ := cache.SplitMetaNamespaceKey(key)
-	if ns != SchedulerNamespace() {
+	ns, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		runtime.HandleError(err)
 		return
 	}
 	score, ok := obj.(*schedv1alpha1.Score)
 	if !ok {
-		klog.ErrorS(ErrTypeAssertion, "Failed to get score")
+		klog.V(4).ErrorS(ErrTypeAssertion, "Failed to get score", "score", key)
 		return
 	}
-	mgr.score.Set(score.Name, score.Spec.Logic, gocache.NoExpiration)
+	if _, ok := mgr.score[ns]; !ok {
+		mgr.Lock()
+		mgr.score[ns] = gocache.New(gocache.NoExpiration, gocache.NoExpiration)
+		mgr.Unlock()
+	}
+	scoreCache := mgr.score[ns]
+	scoreCache.Set(name, score.Spec, gocache.NoExpiration)
 }
 
 func (mgr *manager) ScoreUpdate(old interface{}, new interface{}) {
-	klog.V(10).Infof("%s get update Score", ManagerLogPrefix)
+	klog.V(5).Infof("%s get update Score", ManagerLogPrefix)
 	mgr.ScoreAdd(new)
 }
 
 func (mgr *manager) ScoreDelete(obj interface{}) {
-	klog.V(10).Infof("%s get delete Score", ManagerLogPrefix)
+	klog.V(5).Infof("%s get delete Score", ManagerLogPrefix)
 	key, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
 		runtime.HandleError(err)
 		return
 	}
-	ns, _, _ := cache.SplitMetaNamespaceKey(key)
-	if ns != SchedulerNamespace() {
+	ns, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		runtime.HandleError(err)
 		return
 	}
-	score, ok := obj.(*schedv1alpha1.Score)
+	_, ok := obj.(*schedv1alpha1.Score)
 	if !ok {
-		klog.ErrorS(ErrTypeAssertion, "Failed to get score")
+		klog.V(4).ErrorS(ErrTypeAssertion, "Failed to get score", "score", key)
 		return
 	}
-	mgr.score.Delete(score.Name)
+	scoreCache, exist := mgr.score[ns]
+	if !exist {
+		klog.V(4).ErrorS(ErrNotFoundInCache, "cant delete score, score not in cache", "score", key)
+	}
+	scoreCache.Delete(name)
+	if scoreCache.ItemCount() == 0 {
+		mgr.Lock()
+		delete(mgr.score, ns)
+		mgr.Unlock()
+	}
 }
 
-func (mgr *manager) SchedulerAdd(obj interface{}) {
-	klog.V(10).Infof("[%s] get new Scheduler", ManagerLogPrefix)
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		runtime.HandleError(err)
-		return
+// GetScore get all Score in the specified namespace.
+// If the return is empty, then get all Score in the namespace which arbiter-Scheduler pod is located.
+// If the return is also empty, fallback to get the Score in the kube-system namespace.
+func (mgr *manager) GetScore(ctx context.Context, namespace string) (res []ScoreResult, totalWeight int64) {
+	if namespace == "" {
+		namespace = SchedulerNamespace()
 	}
-	ns, name, _ := cache.SplitMetaNamespaceKey(key)
-	if name != DefaultName || ns != SchedulerNamespace() {
-		return
+	scoreCache, exist := mgr.score[namespace]
+	count := 0
+	if exist {
+		count = scoreCache.ItemCount()
 	}
-	score, ok := obj.(*schedv1alpha1.Scheduler)
-	if !ok {
-		klog.ErrorS(ErrTypeAssertion, "Failed to get scheduler")
-		return
+	if !exist || count == 0 {
+		klog.V(4).InfoS(namespace+" has no score", "namespace", namespace)
+		if namespace == metav1.NamespaceSystem {
+			// final fallback. just exit.
+			return nil, 0
+		}
+		fallbackNamespace := SchedulerNamespace()
+		if namespace == fallbackNamespace {
+			fallbackNamespace = metav1.NamespaceSystem
+		}
+		klog.V(2).InfoS(fmt.Sprintf("ns:%s has no Score CR, try to get Score CR in ns:%s instead", namespace, fallbackNamespace), "namespace", namespace)
+		return mgr.GetScore(ctx, fallbackNamespace)
 	}
-	mgr.scheduler.Set("Score", score.Spec.Score, gocache.NoExpiration)
-}
-
-func (mgr *manager) SchedulerUpdate(old interface{}, new interface{}) {
-	klog.V(10).Infoln(ManagerLogPrefix + "get update Scheduler")
-	mgr.ScoreAdd(new)
-}
-
-func (mgr *manager) SchedulerDelete(obj interface{}) {
-	klog.V(10).Infoln(ManagerLogPrefix + "get delete Scheduler")
-	key, err := cache.MetaNamespaceKeyFunc(obj)
-	if err != nil {
-		klog.ErrorS(err, ManagerLogPrefix+"Failed to obj in cache when delete", "obj", obj)
-		runtime.HandleError(err)
-		return
+	res = make([]ScoreResult, 0)
+	for name, v := range scoreCache.Items() {
+		scoreSpec, ok := v.Object.(schedv1alpha1.ScoreSpec)
+		if ok {
+			if strings.TrimSpace(scoreSpec.Logic) == "" {
+				continue
+			}
+			if scoreSpec.Weight <= 0 {
+				continue
+			}
+			res = append(res, ScoreResult{
+				NameKey:   namespace + "/" + name,
+				ScoreSpec: scoreSpec,
+				Result:    0,
+			})
+			totalWeight += scoreSpec.Weight
+		}
 	}
-	ns, name, _ := cache.SplitMetaNamespaceKey(key)
-	if name != DefaultName || ns != SchedulerNamespace() {
-		return
-	}
-	mgr.scheduler.Flush()
+	return
 }
 
 func (mgr *manager) ObservabilityIndicantAdd(obj interface{}) {
-	klog.V(10).Infoln(ManagerLogPrefix + "get new ObservabilityIndicant")
+	klog.V(5).Infoln(ManagerLogPrefix + "get new ObservabilityIndicant")
 	_, err := cache.MetaNamespaceKeyFunc(obj)
 	if err != nil {
-		klog.V(5).ErrorS(err, ManagerLogPrefix+"Failed to obj in cache when add", "obj", obj)
+		klog.V(4).ErrorS(err, ManagerLogPrefix+"Failed to obj in cache when add", "obj", obj)
 		runtime.HandleError(err)
 		return
 	}
 	obi, ok := obj.(*schedv1alpha1.ObservabilityIndicant)
 	if !ok {
-		klog.V(5).ErrorS(ErrTypeAssertion, ManagerLogPrefix+"Failed to get observability indicant", "obj", obj)
+		klog.V(4).ErrorS(ErrTypeAssertion, ManagerLogPrefix+"Failed to get observability indicant", "obj", obj)
 		return
 	}
-	klog.V(10).Infoln(ManagerLogPrefix+"get new ObservabilityIndicant", "obi", *obi)
+	klog.V(5).Infoln(ManagerLogPrefix+"get new ObservabilityIndicant", "obi", klog.KObj(obi))
 	expiration := gocache.NoExpiration
 	if len(obi.Status.Metrics) == 0 {
-		klog.V(5).ErrorS(ErrNoData, ManagerLogPrefix+"obi have no data", "obi", klog.KObj(obi))
+		klog.V(4).ErrorS(ErrNoData, ManagerLogPrefix+"obi have no data", "obi", klog.KObj(obi))
 		return
 	}
 	var cacheName *gocache.Cache
@@ -264,7 +267,7 @@ func (mgr *manager) ObservabilityIndicantAdd(obj interface{}) {
 	// case IsResourcePod(obi.Spec.TargetRef):
 	//	cacheName = mgr.podMetric
 	default:
-		klog.V(5).ErrorS(ErrNotFoundInCache, ManagerLogPrefix+"Failed to get cacheName", "TargetRef", obi.Spec.TargetRef)
+		klog.V(4).ErrorS(ErrNotFoundInCache, ManagerLogPrefix+"Failed to get cacheName", "TargetRef", obi.Spec.TargetRef)
 		return
 	}
 	cacheKey := getMetricCacheKey(obi)
@@ -360,20 +363,20 @@ func (mgr *manager) ObservabilityIndicantAdd(obj interface{}) {
 		v.Avg = sum / float64(i)
 		(data.Metric)[metricType] = v
 	}
-	klog.V(10).InfoS("add obi to cache", "obi", klog.KObj(obi), "cacheKey", cacheKey)
+	klog.V(5).InfoS("add obi to cache", "obi", klog.KObj(obi), "cacheKey", cacheKey)
 	cacheName.Set(cacheKey, data, expiration)
 }
 
 func (mgr *manager) ObservabilityIndicantUpdate(old interface{}, new interface{}) {
-	klog.V(10).Infoln(ManagerLogPrefix + "get update ObservabilityIndicant")
+	klog.V(5).Infoln(ManagerLogPrefix + "get update ObservabilityIndicant")
 	mgr.ObservabilityIndicantAdd(new)
 }
 
 func (mgr *manager) ObservabilityIndicantDelete(obj interface{}) {
-	klog.V(10).Infoln(ManagerLogPrefix + "get delete ObservabilityIndicant")
+	klog.V(5).Infoln(ManagerLogPrefix + "get delete ObservabilityIndicant")
 	obi, ok := obj.(*schedv1alpha1.ObservabilityIndicant)
 	if !ok {
-		klog.ErrorS(errors.New("cant convert to observability indicant"), ManagerLogPrefix+"cant convert to observability indicant", "obj", obj)
+		klog.V(4).ErrorS(errors.New("cant convert to observability indicant"), ManagerLogPrefix+"cant convert to observability indicant", "obj", obj)
 		return
 	}
 	switch {
@@ -415,6 +418,6 @@ func SchedulerNamespace() string {
 			return ns
 		}
 	}
-
-	return "kube-system"
+	// Fall back to scheduler most likely to exist ns system-ns
+	return metav1.NamespaceSystem
 }
