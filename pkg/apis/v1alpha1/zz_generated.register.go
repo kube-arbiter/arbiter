@@ -64,8 +64,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ObservabilityIndicantList{},
 		&OverCommit{},
 		&OverCommitList{},
-		&Scheduler{},
-		&SchedulerList{},
 		&Score{},
 		&ScoreList{},
 	)

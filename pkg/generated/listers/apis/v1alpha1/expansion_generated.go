@@ -38,14 +38,6 @@ type ObservabilityIndicantNamespaceListerExpansion interface{}
 // OverCommitLister.
 type OverCommitListerExpansion interface{}
 
-// SchedulerListerExpansion allows custom methods to be added to
-// SchedulerLister.
-type SchedulerListerExpansion interface{}
-
-// SchedulerNamespaceListerExpansion allows custom methods to be added to
-// SchedulerNamespaceLister.
-type SchedulerNamespaceListerExpansion interface{}
-
 // ScoreListerExpansion allows custom methods to be added to
 // ScoreLister.
 type ScoreListerExpansion interface{}

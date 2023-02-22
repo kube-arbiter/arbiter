@@ -29,7 +29,6 @@ type ArbiterV1alpha1Interface interface {
 	ObservabilityActionPoliciesGetter
 	ObservabilityIndicantsGetter
 	OverCommitsGetter
-	SchedulersGetter
 	ScoresGetter
 }
 
@@ -48,10 +47,6 @@ func (c *ArbiterV1alpha1Client) ObservabilityIndicants(namespace string) Observa
 
 func (c *ArbiterV1alpha1Client) OverCommits() OverCommitInterface {
 	return newOverCommits(c)
-}
-
-func (c *ArbiterV1alpha1Client) Schedulers(namespace string) SchedulerInterface {
-	return newSchedulers(c, namespace)
 }
 
 func (c *ArbiterV1alpha1Client) Scores(namespace string) ScoreInterface {

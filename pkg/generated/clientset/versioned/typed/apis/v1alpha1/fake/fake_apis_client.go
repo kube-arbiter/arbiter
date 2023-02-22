@@ -40,10 +40,6 @@ func (c *FakeArbiterV1alpha1) OverCommits() v1alpha1.OverCommitInterface {
 	return &FakeOverCommits{c}
 }
 
-func (c *FakeArbiterV1alpha1) Schedulers(namespace string) v1alpha1.SchedulerInterface {
-	return &FakeSchedulers{c, namespace}
-}
-
 func (c *FakeArbiterV1alpha1) Scores(namespace string) v1alpha1.ScoreInterface {
 	return &FakeScores{c, namespace}
 }
