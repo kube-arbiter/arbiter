@@ -24,6 +24,4 @@ type ObservabilityIndicantExpansion interface{}
 
 type OverCommitExpansion interface{}
 
-type SchedulerExpansion interface{}
-
 type ScoreExpansion interface{}

@@ -120,7 +120,7 @@ spec:
         - --bind-address=127.0.0.1
         - --kubeconfig=/etc/kubernetes/scheduler.conf
         - --config=/etc/kubernetes/kube-scheduler-arbiter-config.yaml
-        - --v=10
+        - --v=5
       image: localhost:5001/arbiter.k8s.com.cn/scheduler:latest
       imagePullPolicy: IfNotPresent
       livenessProbe:
@@ -175,7 +175,6 @@ EOF
 function install_scheduler_crd {
 	kubectl apply -f $ROOT/manifests/crds/
 	kubectl apply -f $ROOT/manifests/install/scheduler/scheduler-rbac.yaml
-	kubectl apply -f $ROOT/manifests/install/scheduler/scheduler.yaml
 	kubectl apply -f $ROOT/manifests/install/scheduler/score.yaml
 }
 
