@@ -23,7 +23,7 @@ require (
 	k8s.io/client-go v0.23.10
 	k8s.io/code-generator v0.23.10
 	k8s.io/component-base v0.23.10
-	k8s.io/klog/v2 v2.90.0
+	k8s.io/klog/v2 v2.90.1
 	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf
 	k8s.io/kubernetes v1.23.10
 	k8s.io/metrics v0.23.10
