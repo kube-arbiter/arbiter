@@ -65,7 +65,7 @@ func (f *UnionFile) ReadAt(s []byte, o int64) (int, error) {
 	if f.Layer != nil {
 		n, err := f.Layer.ReadAt(s, o)
 		if (err == nil || err == io.EOF) && f.Base != nil {
-			_, err = f.Base.Seek(o+int64(n), os.SEEK_SET)
+			_, err = f.Base.Seek(o+int64(n), io.SeekStart)
 		}
 		return n, err
 	}
@@ -130,7 +130,7 @@ func (f *UnionFile) Name() string {
 type DirsMerger func(lofi, bofi []os.FileInfo) ([]os.FileInfo, error)
 
 var defaultUnionMergeDirsFn = func(lofi, bofi []os.FileInfo) ([]os.FileInfo, error) {
-	var files = make(map[string]os.FileInfo)
+	files := make(map[string]os.FileInfo)
 
 	for _, fi := range lofi {
 		files[fi.Name()] = fi
@@ -151,7 +151,6 @@ var defaultUnionMergeDirsFn = func(lofi, bofi []os.FileInfo) ([]os.FileInfo, err
 	}
 
 	return rfi, nil
-
 }
 
 // Readdir will weave the two directories together and
@@ -275,7 +274,7 @@ func copyFile(base Fs, layer Fs, name string, bfh File) error {
 		return err
 	}
 	if !exists {
-		err = layer.MkdirAll(filepath.Dir(name), 0777) // FIXME?
+		err = layer.MkdirAll(filepath.Dir(name), 0o777) // FIXME?
 		if err != nil {
 			return err
 		}
