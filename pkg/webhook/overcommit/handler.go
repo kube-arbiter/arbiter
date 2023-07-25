@@ -86,7 +86,7 @@ func Mutate(ctx context.Context, data []byte) *v1.AdmissionResponse {
 	// allow by default
 	response.Allowed = true
 
-	klog.Infof("Body: %s", strings.ReplaceAll(string(data), "\r", ""))
+	klog.V(4).Infof("Body: %s", strings.ReplaceAll(string(data), "\r", ""))
 	ar := v1.AdmissionReview{}
 	if err := json.Unmarshal(data, &ar); err != nil {
 		klog.Error(err)
@@ -147,64 +147,11 @@ func Mutate(ctx context.Context, data []byte) *v1.AdmissionResponse {
 }
 
 func PodPatch(pod *corev1.Pod, overCommit *v1alpha1.OverCommit) []PatchEntry {
-	limitCPU := resource.MustParse(overCommit.Spec.CPU.Limit)
-	limitMemory := resource.MustParse(overCommit.Spec.Memory.Limit)
 	ratioCPU, _ := strconv.ParseFloat(overCommit.Spec.CPU.Ratio, 64)
 	ratioMemory, _ := strconv.ParseFloat(overCommit.Spec.Memory.Ratio, 64)
 
-	requestCPU := fmt.Sprintf("%vm", int64(float64(limitCPU.MilliValue())*ratioCPU))
-	requestMemory := fmt.Sprintf("%vKi", int64(float64(limitMemory.Value())*ratioMemory)/1024)
-
-	initContainers := make([]corev1.Container, 0)
-	for _, c := range pod.Spec.InitContainers {
-		if c.Resources.Limits != nil {
-			c.Resources.Limits[corev1.ResourceCPU] = limitCPU
-			c.Resources.Limits[corev1.ResourceMemory] = limitMemory
-		} else {
-			c.Resources.Limits = corev1.ResourceList{
-				corev1.ResourceCPU:    limitCPU,
-				corev1.ResourceMemory: limitMemory,
-			}
-		}
-
-		if c.Resources.Requests != nil {
-			c.Resources.Requests[corev1.ResourceCPU] = resource.MustParse(requestCPU)
-			c.Resources.Requests[corev1.ResourceMemory] = resource.MustParse(requestMemory)
-		} else {
-			c.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse(requestCPU),
-				corev1.ResourceMemory: resource.MustParse(requestMemory),
-			}
-		}
-
-		initContainers = append(initContainers, c)
-	}
-
-	containers := make([]corev1.Container, 0)
-	for _, c := range pod.Spec.Containers {
-		if c.Resources.Limits != nil {
-			c.Resources.Limits[corev1.ResourceCPU] = limitCPU
-			c.Resources.Limits[corev1.ResourceMemory] = limitMemory
-		} else {
-			c.Resources.Limits = corev1.ResourceList{
-				corev1.ResourceCPU:    limitCPU,
-				corev1.ResourceMemory: limitMemory,
-			}
-		}
-
-		if c.Resources.Requests != nil {
-			c.Resources.Requests[corev1.ResourceCPU] = resource.MustParse(requestCPU)
-			c.Resources.Requests[corev1.ResourceMemory] = resource.MustParse(requestMemory)
-		} else {
-			c.Resources.Requests = corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse(requestCPU),
-				corev1.ResourceMemory: resource.MustParse(requestMemory),
-			}
-		}
-
-		containers = append(containers, c)
-	}
-
+	initContainers := patchContainers(pod.Spec.InitContainers, overCommit, ratioCPU, ratioMemory)
+	containers := patchContainers(pod.Spec.Containers, overCommit, ratioCPU, ratioMemory)
 	patch := make([]PatchEntry, 0)
 
 	if len(initContainers) > 0 {
@@ -224,4 +171,49 @@ func PodPatch(pod *corev1.Pod, overCommit *v1alpha1.OverCommit) []PatchEntry {
 	}
 
 	return patch
+}
+
+// Patch the containers using overcommit configuration
+func patchContainers(oldContainers []corev1.Container, overCommit *v1alpha1.OverCommit, ratioCPU, ratioMemory float64) []corev1.Container {
+	// Get the cpu/memory limit from overcommit if it has
+	defaultLimitCPU := resource.MustParse("2")
+	if overCommit.Spec.CPU.Limit != "" {
+		defaultLimitCPU = resource.MustParse(overCommit.Spec.CPU.Limit)
+	}
+	defaultLimitMemory := resource.MustParse("4Gi")
+	if overCommit.Spec.Memory.Limit != "" {
+		defaultLimitMemory = resource.MustParse(overCommit.Spec.Memory.Limit)
+	}
+	containers := make([]corev1.Container, 0)
+	for _, c := range oldContainers {
+		// Use default limits if the original one is nil and overcommit has the limit configured
+		if c.Resources.Limits == nil && overCommit.Spec.CPU.Limit != "" {
+			c.Resources.Limits[corev1.ResourceCPU] = defaultLimitCPU
+		}
+		if c.Resources.Limits == nil && overCommit.Spec.Memory.Limit != "" {
+			c.Resources.Limits[corev1.ResourceMemory] = defaultLimitMemory
+		}
+		// Calcuate the cpu/memory requests based on the limits
+		cpuLimit := c.Resources.Limits[corev1.ResourceCPU]
+		memoryLimit := c.Resources.Limits[corev1.ResourceMemory]
+		cpuRequest := c.Resources.Requests[corev1.ResourceCPU]
+		memoryRequest := c.Resources.Requests[corev1.ResourceMemory]
+
+		// Allow user to define lower request than the configured overcommit value
+		overcommitCPURequest := cpuRequest
+		if float64(cpuRequest.MilliValue()) > float64(cpuLimit.MilliValue())*ratioCPU {
+			overcommitCPURequest = resource.MustParse(fmt.Sprintf("%vm", int64(float64(cpuLimit.MilliValue())*ratioCPU)))
+		}
+		overcommitMemoryRequest := memoryRequest
+		if float64(memoryRequest.MilliValue()) > float64(memoryLimit.MilliValue())*ratioMemory {
+			overcommitMemoryRequest = resource.MustParse(fmt.Sprintf("%vMi", int64(float64(memoryLimit.Value())*ratioMemory)/1024/1024))
+		}
+		c.Resources.Requests = corev1.ResourceList{
+			corev1.ResourceCPU:    overcommitCPURequest,
+			corev1.ResourceMemory: overcommitMemoryRequest,
+		}
+
+		containers = append(containers, c)
+	}
+	return containers
 }
