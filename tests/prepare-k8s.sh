@@ -10,12 +10,21 @@ function kind_up_cluster {
 	# https://github.com/kubernetes-sigs/kind/releases
 	case $K8S_VERSION in
 	v1.18 | v1.18.20)
+		go install sigs.k8s.io/kind@v0.15.0
+		mv $HOME/go/bin/kind /usr/local/bin/kind
+		kind version
 		kind_image="kindest/node:v1.18.20@sha256:61c9e1698c1cb19c3b1d8151a9135b379657aee23c59bde4a8d87923fcb43a91"
 		;;
 	v1.19 | v1.19.16)
+		go install sigs.k8s.io/kind@v0.17.0
+		mv $HOME/go/bin/kind /usr/local/bin/kind
+		kind version
 		kind_image="kindest/node:v1.19.16@sha256:707469aac7e6805e52c3bde2a8a8050ce2b15decff60db6c5077ba9975d28b98"
 		;;
 	v1.20 | v1.20.15)
+		go install sigs.k8s.io/kind@v0.17.0
+		mv $HOME/go/bin/kind /usr/local/bin/kind
+		kind version
 		kind_image="kindest/node:v1.20.15@sha256:d67de8f84143adebe80a07672f370365ec7d23f93dc86866f0e29fa29ce026fe"
 		;;
 	v1.21 | v1.21.14)
