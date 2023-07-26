@@ -29,7 +29,7 @@ require (
 	k8s.io/metrics v0.23.17
 	sigs.k8s.io/controller-runtime v0.11.1
 	sigs.k8s.io/custom-metrics-apiserver v1.23.0
-	sigs.k8s.io/metrics-server v0.6.3
+	sigs.k8s.io/metrics-server v0.6.4
 )
 
 require (
