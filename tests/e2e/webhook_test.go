@@ -32,11 +32,11 @@ var _ = Describe("webhook", Label("webhook"), func() {
 				fmt.Println("check the resource of pod successfully")
 			})
 			if LowKubernetesVersion("v1.18") {
-				Expect(output).To(Equal(`map[cpu:50m memory:629145Ki]`), func() string {
+				Expect(output).To(Equal(`map[cpu:250m memory:64Mi]`), func() string {
 					return output
 				})
 			} else {
-				Expect(output).To(Equal(`{"cpu":"50m","memory":"629145Ki"}`), func() string {
+				Expect(output).To(Equal(`{"cpu":"250m","memory":"64Mi"}`), func() string {
 					return output
 				})
 			}

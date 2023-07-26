@@ -28,7 +28,7 @@ function build_image {
 function install_prometheus_by_helm {
 	echo "prometheus install start..."
 	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-	helm upgrade --wait --install prometheus prometheus-community/prometheus --namespace kube-system --set prometheus.service.type=NodePort --set prometheus.service.nodePort=30900
+	helm upgrade --debug --wait --install prometheus prometheus-community/prometheus --namespace kube-system --set prometheus.service.type=NodePort --set prometheus.service.nodePort=30900 --set kube-state-metrics.securityContext.enabled=false
 	echo "prometheus install finish!"
 }
 
@@ -40,14 +40,14 @@ function install_certmanager_by_helm {
 		CertMangerVersion="v1.8.2"
 	fi
 	helm repo add jetstack https://charts.jetstack.io
-	helm upgrade --wait --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version $CertMangerVersion --set installCRDs=true
+	helm upgrade --debug --wait --install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version $CertMangerVersion --set installCRDs=true
 	echo "cert manager install finish!"
 }
 
 function install_metrics_server_by_helm {
 	echo "metrics-server install start..."
 	helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
-	helm upgrade --install metrics-server metrics-server/metrics-server --namespace=metrics-server --create-namespace
+	helm upgrade --debug --install metrics-server metrics-server/metrics-server --namespace=metrics-server --create-namespace --set securityContext=null
 	# https://github.com/kubernetes-sigs/metrics-server/issues/917#issuecomment-986732226
 	kubectl scale --replicas=0 --timeout=${TIMEOUT} -n metrics-server deployment/metrics-server
 	kubectl patch deploy -n metrics-server metrics-server --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--kubelet-insecure-tls"}]'
