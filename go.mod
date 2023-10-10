@@ -7,7 +7,7 @@ require (
 	github.com/dop251/goja v0.0.0-20220927172339-ea66e911853d
 	github.com/dop251/goja_nodejs v0.0.0-20220905124449-678b33ca5009
 	github.com/golangci/golangci-lint v1.53.2
-	github.com/google/go-cmp v0.5.9
+	github.com/google/go-cmp v0.6.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.9.7
 	github.com/onsi/gomega v1.27.7
