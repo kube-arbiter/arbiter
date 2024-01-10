@@ -23,7 +23,7 @@ require (
 	k8s.io/client-go v0.23.17
 	k8s.io/code-generator v0.23.10
 	k8s.io/component-base v0.23.17
-	k8s.io/klog/v2 v2.100.1
+	k8s.io/klog/v2 v2.120.0
 	k8s.io/kube-openapi v0.0.0-20220124234850-424119656bbf
 	k8s.io/kubernetes v1.23.10
 	k8s.io/metrics v0.23.17
@@ -96,7 +96,7 @@ require (
 	github.com/fzipp/gocyclo v0.6.0 // indirect
 	github.com/go-critic/go-critic v0.8.1 // indirect
 	github.com/go-errors/errors v1.0.1 // indirect
-	github.com/go-logr/logr v1.2.4 // indirect
+	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/zapr v1.2.0 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.6 // indirect
